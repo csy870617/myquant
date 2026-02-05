@@ -1,0 +1,59 @@
+/* 폰트 및 기본 배경 */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+
+html, body, [data-testid="stAppViewContainer"] {
+    font-family: 'Inter', sans-serif;
+    background-color: #f1f5f9;
+}
+
+/* 메인 제목 */
+.main-title {
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: #1e293b;
+    margin-bottom: 0.5rem;
+    letter-spacing: -0.025em;
+    text-align: left;
+}
+
+/* 섹션 헤더 (파란색 세로줄 효과) */
+.section-header {
+    border-left: 5px solid #3b82f6;
+    padding-left: 15px;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #334155;
+}
+
+/* 메트릭(지표) 카드 디자인 */
+div[data-testid="stMetric"] {
+    background: white;
+    border-radius: 12px;
+    padding: 20px 25px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    transition: transform 0.2s ease-in-out;
+}
+
+div[data-testid="stMetric"]:hover {
+    transform: translateY(-5px);
+    border-color: #3b82f6;
+}
+
+/* 탭(Tab) 커스텀 디자인 */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 10px;
+}
+
+.stTabs [data-baseweb="tab"] {
+    background-color: white;
+    border-radius: 8px 8px 0px 0px;
+    padding: 10px 20px;
+}
+
+.stTabs [aria-selected="true"] {
+    background-color: #eff6ff !important;
+    border-bottom: 3px solid #3b82f6 !important;
+}
