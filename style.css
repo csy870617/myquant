@@ -1,4 +1,3 @@
-/* 폰트 및 기본 배경 */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
 
 html, body, [data-testid="stAppViewContainer"] {
@@ -6,54 +5,46 @@ html, body, [data-testid="stAppViewContainer"] {
     background-color: #f1f5f9;
 }
 
-/* 메인 제목 */
 .main-title {
-    font-size: 2.5rem;
+    font-size: clamp(1.5rem, 5vw, 2.5rem);
     font-weight: 800;
     color: #1e293b;
     margin-bottom: 0.5rem;
-    letter-spacing: -0.025em;
-    text-align: left;
 }
 
-/* 섹션 헤더 (파란색 세로줄 효과) */
 .section-header {
     border-left: 5px solid #3b82f6;
-    padding-left: 15px;
+    padding-left: 12px;
     margin-top: 2rem;
     margin-bottom: 1rem;
-    font-size: 1.25rem;
+    font-size: 1.2rem;
     font-weight: 600;
     color: #334155;
 }
 
-/* 메트릭(지표) 카드 디자인 */
+/* 업데이트 정보 바 스타일 */
+.update-bar {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    padding: 10px 20px;
+    border-radius: 50px;
+    margin-bottom: 20px;
+    font-size: 0.9rem;
+    color: #475569;
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+
 div[data-testid="stMetric"] {
     background: white;
     border-radius: 12px;
-    padding: 20px 25px;
+    padding: 15px 20px;
     border: 1px solid #e2e8f0;
     box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-    transition: transform 0.2s ease-in-out;
 }
 
-div[data-testid="stMetric"]:hover {
-    transform: translateY(-5px);
-    border-color: #3b82f6;
-}
-
-/* 탭(Tab) 커스텀 디자인 */
-.stTabs [data-baseweb="tab-list"] {
-    gap: 10px;
-}
-
-.stTabs [data-baseweb="tab"] {
-    background-color: white;
-    border-radius: 8px 8px 0px 0px;
-    padding: 10px 20px;
-}
-
-.stTabs [aria-selected="true"] {
-    background-color: #eff6ff !important;
-    border-bottom: 3px solid #3b82f6 !important;
+@media (max-width: 768px) {
+    div[data-testid="stMetric"] {
+        padding: 10px 15px !important;
+    }
 }

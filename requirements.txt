@@ -1,5 +1,6 @@
 streamlit
 pandas
 pandas-datareader
+yfinance
 plotly
 setuptools
