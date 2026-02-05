@@ -1,4 +1,4 @@
-import setuptools  # Python 3.12+ 버전의 distutils 에러 방지용
+import setuptools
 import streamlit as st
 import pandas as pd
 import pandas_datareader.data as web
@@ -6,119 +6,152 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 
-# --- 1. 기본 설정 ---
-st.set_page_config(page_title="Quant Liquidity Pro", layout="wide")
-LOOKBACK_YEARS = 5
-INDEX_WINDOW = 104  # 최근 2년(104주) 기준 상대적 위치 계산
-
-# --- 2. 데이터 수집 함수 (에러 방지 로직 포함) ---
-@st.cache_data(ttl=3600)
-def get_combined_data():
-    try:
-        end = datetime.now()
-        start = end - timedelta(days=365 * LOOKBACK_YEARS)
+# --- 1. [Design] 고급 CSS 스타일 주입 ---
+def inject_pro_css():
+    st.markdown("""
+        <style>
+        /* 기본 폰트 및 배경 */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
         
-        # FRED 데이터 심볼: 자산(WALCL), 재무부(WDTGAL), 역레포(RRPONTSYD), S&P500(SP500)
-        symbols = {
-            'WALCL': 'Fed_Assets', 
-            'WDTGAL': 'TGA', 
-            'RRPONTSYD': 'RRP',
-            'SP500': 'SP500'
+        html, body, [data-testid="stAppViewContainer"] {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9; /* 연한 그레이 블루 배경 */
+        }
+
+        /* 메트릭 카드 개별 스타일 */
+        div[data-testid="stMetric"] {
+            background: white;
+            border-radius: 12px;
+            padding: 20px 25px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            transition: transform 0.2s ease-in-out;
         }
         
-        # 데이터 수집
-        df = web.DataReader(list(symbols.keys()), 'fred', start, end)
+        div[data-testid="stMetric"]:hover {
+            transform: translateY(-5px);
+            border-color: #3b82f6;
+        }
+
+        /* 제목 스타일 */
+        .main-title {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: #1e293b;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.025em;
+        }
+
+        /* 섹션 구분선 및 헤더 */
+        .section-header {
+            border-left: 5px solid #3b82f6;
+            padding-left: 15px;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #334155;
+        }
+
+        /* 탭 디자인 커스텀 */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 10px;
+        }
+
+        .stTabs [data-baseweb="tab"] {
+            height: 50px;
+            white-space: pre-wrap;
+            background-color: white;
+            border-radius: 8px 8px 0px 0px;
+            gap: 1px;
+            padding-left: 20px;
+            padding-right: 20px;
+        }
+
+        .stTabs [aria-selected="true"] {
+            background-color: #eff6ff !important;
+            border-bottom: 3px solid #3b82f6 !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+# --- 2. [Logic] 데이터 분석 엔진 (기존 정교화 모델) ---
+@st.cache_data(ttl=3600)
+def get_pro_data():
+    try:
+        end = datetime.now()
+        start = end - timedelta(days=365 * 5)
+        symbols = {'WALCL': 'Fed', 'WDTGAL': 'TGA', 'RRPONTSYD': 'RRP', 'SP500': 'SP500'}
+        df = web.DataReader(list(symbols.keys()), 'fred', start, end).ffill()
         df.columns = [symbols[col] for col in df.columns]
         
-        # 주말/공휴일 결측치 채우기 및 4주 이동평균으로 노이즈 제거
-        df = df.ffill()
-        df['Fed_Assets'] = (df['Fed_Assets'] / 1000).rolling(window=4).mean()
-        df['TGA'] = df['TGA'].rolling(window=4).mean()
-        df['RRP'] = df['RRP'].rolling(window=4).mean()
-        df['SP500'] = df['SP500'].rolling(window=4).mean()
+        # 가공
+        df['Net_Liq'] = (df['Fed'] / 1000) - df['TGA'] - df['RRP']
+        df = df.rolling(window=4).mean().dropna() # 4주 이동평균
         
-        # 순유동성(Net Liquidity) 계산
-        df['Net_Liquidity'] = df['Fed_Assets'] - df['TGA'] - df['RRP']
+        # 인덱스 (최근 2년 기준)
+        window = 104
+        df['Liq_Idx'] = df['Net_Liq'].rolling(window=window).apply(lambda x: (x[-1]-x.min())/(x.max()-x.min())*100 if x.max()!=x.min() else 50)
+        df['Overheat'] = (df['SP500']/df['Net_Liq']).rolling(window=window).apply(lambda x: (x[-1]-x.min())/(x.max()-x.min())*100 if x.max()!=x.min() else 50)
         
-        # 유동성 지수화 (Rolling Percentile)
-        df['Liquidity_Index'] = df['Net_Liquidity'].rolling(window=INDEX_WINDOW).apply(
-            lambda x: (x[-1] - x.min()) / (x.max() - x.min()) * 100 if (x.max() != x.min()) else 50
-        )
-        
-        # 시장 과열도(Divergence) 지수: S&P 500 / Net_Liquidity 비율
-        df['Ratio'] = df['SP500'] / df['Net_Liquidity']
-        df['Overheat_Index'] = df['Ratio'].rolling(window=INDEX_WINDOW).apply(
-            lambda x: (x[-1] - x.min()) / (x.max() - x.min()) * 100 if (x.max() != x.min()) else 50
-        )
-        
-        return df.dropna()
+        return df
     except Exception as e:
-        st.error(f"데이터 수집 중 에러가 발생했습니다: {e}")
+        st.error(f"데이터 수집 에러: {e}")
         return None
 
-# --- 3. 메인 화면 구성 ---
-st.title("🛡️ 퀀트 유동성 & 시장 과열 분석기")
-st.markdown("가장 신뢰받는 연준(Fed) 대차대조표 데이터를 기반으로 시장의 실제 자금력을 분석합니다.")
+# --- 3. [View] 화면 렌더링 ---
+st.set_page_config(page_title="Liquidity Quant Terminal", layout="wide")
+inject_pro_css()
 
-# 데이터 불러오기 시도
-with st.spinner('FRED 서버에서 최신 데이터를 분석 중입니다...'):
-    data = get_combined_data()
+st.markdown('<p class="main-title">🌊 Liquidity Quant Terminal</p>', unsafe_allow_html=True)
+st.markdown("미 연준 순유동성 기반 중장기 마켓 타이밍 보조 도구")
+
+data = get_pro_data()
 
 if data is not None:
     curr = data.iloc[-1]
-    prev = data.iloc[-5]  # 약 한 달 전 데이터
+    prev = data.iloc[-5]
     
-    # 상단 핵심 메트릭
-    col1, col2, col3 = st.columns(3)
+    # 1. 최상단 메트릭 섹션
+    st.markdown('<div class="section-header">Market Snapshot</div>', unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns(4)
     
-    # 과열 지수는 높을수록 위험하므로 상승 시 빨간색 표시
-    col1.metric("시장 과열 지수 (0-100)", f"{curr['Overheat_Index']:.1f}", 
-                f"{curr['Overheat_Index'] - prev['Overheat_Index']:.1f}", delta_color="inverse")
-    col2.metric("순유동성 지수", f"{curr['Liquidity_Index']:.1f}", 
-                f"{curr['Liquidity_Index'] - prev['Liquidity_Index']:.1f}")
-    col3.metric("S&P 500 (평균)", f"{curr['SP500']:,.0f}")
+    with c1:
+        st.metric("시장 과열도 (Overheat)", f"{curr['Overheat']:.1f}%", f"{curr['Overheat']-prev['Overheat']:.1f}%", delta_color="inverse")
+    with c2:
+        st.metric("유동성 지수 (Liquidity)", f"{curr['Liq_Idx']:.1f}%", f"{curr['Liq_Idx']-prev['Liq_Idx']:.1f}%")
+    with c3:
+        st.metric("순유동성 ($B)", f"{curr['Net_Liq']:,.1f}", f"{curr['Net_Liq']-prev['Net_Liq']:,.1f}B")
+    with c4:
+        st.metric("S&P 500 Index", f"{curr['SP500']:,.0f}", f"{curr['SP500']-prev['SP500']:,.0f}")
 
-    st.divider()
+    # 2. 메인 차트 섹션 (탭 구성)
+    st.markdown('<div class="section-header">Advanced Analysis</div>', unsafe_allow_html=True)
+    t1, t2 = st.tabs(["📈 유동성 vs 주가 괴리율", "🧭 위험 판단 가이드"])
+    
+    with t1:
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+        fig.add_trace(go.Scatter(x=data.index, y=data['Net_Liq'], name="Net Liquidity", fill='tozeroy', line=dict(color='#3b82f6', width=1.5)), secondary_y=False)
+        fig.add_trace(go.Scatter(x=data.index, y=data['SP500'], name="S&P 500", line=dict(color='#ef4444', width=2.5)), secondary_y=True)
+        
+        fig.update_layout(
+            hovermode="x unified",
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            margin=dict(l=0, r=0, t=30, b=0),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
-    # 차트 1: 유동성과 지수 괴리도 (가장 중요한 차트)
-    st.subheader("📊 유동성(공급) vs S&P 500(가격) 추이")
-    
-    
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-    # 순유동성 (파란색 영역)
-    fig.add_trace(go.Scatter(x=data.index, y=data['Net_Liquidity'], name="Net Liquidity ($B)", 
-                             fill='tozeroy', line=dict(color='royalblue', width=1)), secondary_y=False)
-    # S&P 500 (빨간색 선)
-    fig.add_trace(go.Scatter(x=data.index, y=data['SP500'], name="S&P 500 Index", 
-                             line=dict(color='firebrick', width=3)), secondary_y=True)
-    
-    fig.update_layout(hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-    fig.update_yaxes(title_text="Liquidity ($ Billions)", secondary_y=False)
-    fig.update_yaxes(title_text="S&P 500 Price", secondary_y=True)
-    st.plotly_chart(fig, use_container_width=True)
-
-    # 차트 2: 과열 지수 게이지
-    st.subheader("🚨 현재 시장 위험 판단")
-    
-    fig_gauge = go.Figure(go.Indicator(
-        mode = "gauge+number",
-        value = curr['Overheat_Index'],
-        gauge = {
-            'axis': {'range': [0, 100]},
-            'steps': [
-                {'range': [0, 30], 'color': "rgba(0, 255, 0, 0.3)"},
-                {'range': [30, 70], 'color': "rgba(255, 255, 0, 0.3)"},
-                {'range': [70, 100], 'color': "rgba(255, 0, 0, 0.3)"}],
-            'bar': {'color': "black"}}))
-    st.plotly_chart(fig_gauge, use_container_width=True)
-
-    # 판단 가이드
-    if curr['Overheat_Index'] > 80:
-        st.warning("⚠️ **주의:** 현재 유동성 대비 주가가 역사적 고점 부근입니다. 현금 비중 확대를 고려할 시점입니다.")
-    elif curr['Overheat_Index'] < 30:
-        st.info("✅ **기회:** 유동성 대비 주가가 충분히 낮아졌습니다. 중장기 매집에 우호적인 환경입니다.")
-    else:
-        st.write("ℹ️ **중립:** 시장은 현재 가용 유동성 범위 내에서 적정 가치를 형성하고 있습니다.")
+    with t2:
+        # 과열도에 따른 시각적 진단 카드
+        score = curr['Overheat']
+        if score > 80:
+            st.error(f"### 🚨 위험: 과열 지수 {score:.1f}% - 유동성 대비 주가가 지나치게 비쌉니다.")
+        elif score < 30:
+            st.success(f"### ✅ 기회: 과열 지수 {score:.1f}% - 유동성 대비 주가가 저렴하거나 매집하기 좋은 시점입니다.")
+        else:
+            st.info(f"### ℹ️ 중립: 과열 지수 {score:.1f}% - 주가가 자금력 범위 내에서 움직이고 있습니다.")
 
 else:
-    st.error("데이터를 불러올 수 없습니다. 터미널의 에러 로그를 확인하거나 잠시 후 다시 시도해 주세요.")
+    st.warning("데이터를 불러오는 중입니다. 잠시만 기다려주세요...")
