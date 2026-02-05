@@ -1,74 +1,124 @@
+import setuptools  # Python 3.12+ 버전의 distutils 에러 방지용
 import streamlit as st
 import pandas as pd
 import pandas_datareader.data as web
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 
-# --- 페이지 설정 ---
-st.set_page_config(page_title="Pure Liquidity Index", layout="wide")
+# --- 1. 기본 설정 ---
+st.set_page_config(page_title="Quant Liquidity Pro", layout="wide")
+LOOKBACK_YEARS = 5
+INDEX_WINDOW = 104  # 최근 2년(104주) 기준 상대적 위치 계산
 
-@st.cache_data(ttl=3600) # 1시간마다 데이터 갱신
-def get_pure_liquidity():
-    # 데이터 수집 (최근 5년치로 자동 설정하여 '상대적 지수' 산출)
-    end = datetime.now()
-    start = end - timedelta(days=365 * 5)
+# --- 2. 데이터 수집 함수 (에러 방지 로직 포함) ---
+@st.cache_data(ttl=3600)
+def get_combined_data():
+    try:
+        end = datetime.now()
+        start = end - timedelta(days=365 * LOOKBACK_YEARS)
+        
+        # FRED 데이터 심볼: 자산(WALCL), 재무부(WDTGAL), 역레포(RRPONTSYD), S&P500(SP500)
+        symbols = {
+            'WALCL': 'Fed_Assets', 
+            'WDTGAL': 'TGA', 
+            'RRPONTSYD': 'RRP',
+            'SP500': 'SP500'
+        }
+        
+        # 데이터 수집
+        df = web.DataReader(list(symbols.keys()), 'fred', start, end)
+        df.columns = [symbols[col] for col in df.columns]
+        
+        # 주말/공휴일 결측치 채우기 및 4주 이동평균으로 노이즈 제거
+        df = df.ffill()
+        df['Fed_Assets'] = (df['Fed_Assets'] / 1000).rolling(window=4).mean()
+        df['TGA'] = df['TGA'].rolling(window=4).mean()
+        df['RRP'] = df['RRP'].rolling(window=4).mean()
+        df['SP500'] = df['SP500'].rolling(window=4).mean()
+        
+        # 순유동성(Net Liquidity) 계산
+        df['Net_Liquidity'] = df['Fed_Assets'] - df['TGA'] - df['RRP']
+        
+        # 유동성 지수화 (Rolling Percentile)
+        df['Liquidity_Index'] = df['Net_Liquidity'].rolling(window=INDEX_WINDOW).apply(
+            lambda x: (x[-1] - x.min()) / (x.max() - x.min()) * 100 if (x.max() != x.min()) else 50
+        )
+        
+        # 시장 과열도(Divergence) 지수: S&P 500 / Net_Liquidity 비율
+        df['Ratio'] = df['SP500'] / df['Net_Liquidity']
+        df['Overheat_Index'] = df['Ratio'].rolling(window=INDEX_WINDOW).apply(
+            lambda x: (x[-1] - x.min()) / (x.max() - x.min()) * 100 if (x.max() != x.min()) else 50
+        )
+        
+        return df.dropna()
+    except Exception as e:
+        st.error(f"데이터 수집 중 에러가 발생했습니다: {e}")
+        return None
+
+# --- 3. 메인 화면 구성 ---
+st.title("🛡️ 퀀트 유동성 & 시장 과열 분석기")
+st.markdown("가장 신뢰받는 연준(Fed) 대차대조표 데이터를 기반으로 시장의 실제 자금력을 분석합니다.")
+
+# 데이터 불러오기 시도
+with st.spinner('FRED 서버에서 최신 데이터를 분석 중입니다...'):
+    data = get_combined_data()
+
+if data is not None:
+    curr = data.iloc[-1]
+    prev = data.iloc[-5]  # 약 한 달 전 데이터
     
-    # WALCL(연준자산), WDTGAL(TGA), RRPONTSYD(역레포)
-    symbols = {'WALCL': 'Fed_Assets', 'WDTGAL': 'TGA', 'RRPONTSYD': 'RRP'}
-    df = web.DataReader(list(symbols.keys()), 'fred', start, end)
-    df.columns = [symbols[col] for col in df.columns]
-    
-    # 순유동성 공식: Net Liquidity = Fed_Assets - TGA - RRP
-    df['Net_Liquidity'] = df['Fed_Assets'] - df['TGA'] - df['RRP']
-    return df.dropna()
-
-def calculate_idx(series):
-    # 현재 유동성이 최근 5년 범위 내에서 1~100 중 어디인지 산출
-    min_val = series.min()
-    max_val = series.max()
-    curr_val = series.iloc[-1]
-    return ((curr_val - min_val) / (max_val - min_val)) * 100
-
-# --- 실행 로직 ---
-st.title("🌊 실시간 순유동성(Net Liquidity) 분석기")
-st.markdown("매니저의 주관을 배제하고 **연준 대차대조표 기반의 순수 유동성**만 측정합니다.")
-
-try:
-    data = get_pure_liquidity()
-    current_index = calculate_idx(data['Net_Liquidity'])
-    
-    # 1. 메인 지표 표시
+    # 상단 핵심 메트릭
     col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("현재 유동성 지수", f"{current_index:.1f} / 100")
-    with col2:
-        st.metric("실질 가용 자금", f"${data['Net_Liquidity'].iloc[-1] / 1000:.2f}T")
-    with col3:
-        st.write(f"최종 데이터 업데이트: {data.index[-1].date()}")
+    
+    # 과열 지수는 높을수록 위험하므로 상승 시 빨간색 표시
+    col1.metric("시장 과열 지수 (0-100)", f"{curr['Overheat_Index']:.1f}", 
+                f"{curr['Overheat_Index'] - prev['Overheat_Index']:.1f}", delta_color="inverse")
+    col2.metric("순유동성 지수", f"{curr['Liquidity_Index']:.1f}", 
+                f"{curr['Liquidity_Index'] - prev['Liquidity_Index']:.1f}")
+    col3.metric("S&P 500 (평균)", f"{curr['SP500']:,.0f}")
 
-    # 2. 유동성 게이지 차트
+    st.divider()
+
+    # 차트 1: 유동성과 지수 괴리도 (가장 중요한 차트)
+    st.subheader("📊 유동성(공급) vs S&P 500(가격) 추이")
+    
+    
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    # 순유동성 (파란색 영역)
+    fig.add_trace(go.Scatter(x=data.index, y=data['Net_Liquidity'], name="Net Liquidity ($B)", 
+                             fill='tozeroy', line=dict(color='royalblue', width=1)), secondary_y=False)
+    # S&P 500 (빨간색 선)
+    fig.add_trace(go.Scatter(x=data.index, y=data['SP500'], name="S&P 500 Index", 
+                             line=dict(color='firebrick', width=3)), secondary_y=True)
+    
+    fig.update_layout(hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+    fig.update_yaxes(title_text="Liquidity ($ Billions)", secondary_y=False)
+    fig.update_yaxes(title_text="S&P 500 Price", secondary_y=True)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # 차트 2: 과열 지수 게이지
+    st.subheader("🚨 현재 시장 위험 판단")
+    
     fig_gauge = go.Figure(go.Indicator(
         mode = "gauge+number",
-        value = current_index,
+        value = curr['Overheat_Index'],
         gauge = {
             'axis': {'range': [0, 100]},
-            'bar': {'color': "#1f77b4"},
             'steps': [
-                {'range': [0, 30], 'color': "#ff4b4b"},
-                {'range': [30, 70], 'color': "#fdfd96"},
-                {'range': [70, 100], 'color': "#00cc96"}]}))
+                {'range': [0, 30], 'color': "rgba(0, 255, 0, 0.3)"},
+                {'range': [30, 70], 'color': "rgba(255, 255, 0, 0.3)"},
+                {'range': [70, 100], 'color': "rgba(255, 0, 0, 0.3)"}],
+            'bar': {'color': "black"}}))
     st.plotly_chart(fig_gauge, use_container_width=True)
 
-    # 3. 유동성 흐름 차트
-    st.subheader("유동성 변화 추이 (최근 5년)")
-    st.line_chart(data['Net_Liquidity'])
+    # 판단 가이드
+    if curr['Overheat_Index'] > 80:
+        st.warning("⚠️ **주의:** 현재 유동성 대비 주가가 역사적 고점 부근입니다. 현금 비중 확대를 고려할 시점입니다.")
+    elif curr['Overheat_Index'] < 30:
+        st.info("✅ **기회:** 유동성 대비 주가가 충분히 낮아졌습니다. 중장기 매집에 우호적인 환경입니다.")
+    else:
+        st.write("ℹ️ **중립:** 시장은 현재 가용 유동성 범위 내에서 적정 가치를 형성하고 있습니다.")
 
-    # 4. 데이터 상세 설명
-    with st.expander("산출 공식 및 데이터 설명"):
-        st.latex(r"Net\ Liquidity = WALCL - TGA - RRP")
-        st.write("- **WALCL:** 연준이 공급한 총 자산 (돈의 뿌리)")
-        st.write("- **TGA:** 재무부 계좌 잔액 (정부가 묶어둔 돈, 시장에선 마이너스)")
-        st.write("- **RRP:** 역레포 잔액 (시중 잉여 자금이 연준으로 회수된 돈, 시장에선 마이너스)")
-
-except Exception as e:
-    st.error(f"데이터를 가져오는 중 오류가 발생했습니다: {e}")
+else:
+    st.error("데이터를 불러올 수 없습니다. 터미널의 에러 로그를 확인하거나 잠시 후 다시 시도해 주세요.")
