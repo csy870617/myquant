@@ -163,8 +163,13 @@ footer { display: none !important; }
 }
 .app-footer { text-align:center; color:var(--text-muted); font-size:0.75rem; margin-top:2rem; padding:1rem; border-top:1px solid var(--border); }
 
-/* 모바일 터치: Plotly 차트 내 핀치 줌 활성화 */
-.js-plotly-plot, .plotly { touch-action: none; }
+/* 모바일 터치: Plotly 차트 핀치 줌 활성화 */
+.js-plotly-plot, .plotly, .js-plotly-plot .plotly,
+[data-testid="stPlotlyChart"], [data-testid="stPlotlyChart"] > div,
+.stPlotlyChart, .stPlotlyChart > div > div > div {
+    touch-action: none !important;
+    -webkit-touch-callout: none;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -222,18 +227,101 @@ MARKET_PIVOTS = [
     ("2026-01-28", "S&P 7000 돌파",          "14개월 만에 +1,000pt, AI 슈퍼사이클 & OBBBA 효과",    "🏆", "up"),
 ]
 
+MARKET_PIVOTS_KR = [
+    # 2015
+    ("2015-08-24", "중국발 블랙먼데이",       "위안 절하 → KOSPI 1,830선 붕괴, 외국인 대량 매도",     "🇨🇳", "down"),
+    # 2016
+    ("2016-11-08", "트럼프 1기 당선",        "신흥국 자금유출 우려 → KOSPI 2,000선 하회",           "🗳️", "down"),
+    ("2016-12-09", "박근혜 탄핵 가결",        "정치 불확실성 해소 기대 → 증시 반등",                 "⚖️", "up"),
+    # 2017
+    ("2017-05-10", "문재인 대통령 취임",      "경기부양 기대 → KOSPI 2,300 돌파 랠리",              "🏛️", "up"),
+    ("2017-09-03", "북한 6차 핵실험",         "지정학 리스크 → KOSPI 급락 후 빠른 회복",             "🚀", "down"),
+    # 2018
+    ("2018-04-27", "남북 판문점 정상회담",     "한반도 평화 기대 → 코리아 디스카운트 축소",            "🤝", "up"),
+    ("2018-10-01", "미중 무역전쟁 격화",      "수출주 직격탄 → KOSPI 2,000선 붕괴",                 "⚔️", "down"),
+    # 2019
+    ("2019-07-01", "일본 수출규제",           "반도체 소재 수출 제한 → 삼성·SK 타격",                "🇯🇵", "down"),
+    # 2020
+    ("2020-03-19", "코스피 서킷브레이커",     "코로나 패닉 → KOSPI 1,457 저점, 사이드카 발동",       "🦠", "down"),
+    ("2020-03-23", "한은 긴급 기준금리 인하", "0.75%로 빅컷 → 유동성 공급 확대",                    "💵", "up"),
+    ("2020-05-28", "동학개미운동",           "개인투자자 대거 유입 → KOSPI 반등 주도",              "🐜", "up"),
+    ("2020-11-09", "화이자 백신 발표",        "수출주 회복 기대 → KOSPI 2,500 돌파",                "💉", "up"),
+    # 2021
+    ("2021-01-07", "KOSPI 3,000 돌파",       "역사상 첫 3,000 안착 → 개인 순매수 주도",             "🏆", "up"),
+    ("2021-06-24", "KOSPI 3,300 역대 최고",   "글로벌 유동성 피크 → 바이오·2차전지 과열",             "📈", "up"),
+    ("2021-11-22", "긴축 예고 & 하락 전환",   "금리인상 시작 → 성장주·소형주 급락",                   "📉", "down"),
+    # 2022
+    ("2022-02-24", "러-우 전쟁 개전",         "에너지 수입국 한국 직격 → KOSPI 2,600선 붕괴",        "💥", "down"),
+    ("2022-06-23", "한은 빅스텝 (50bp)",      "기준금리 1.75→2.25%, 긴축 가속",                    "⬆️", "down"),
+    ("2022-09-26", "KOSPI 2,200 붕괴",       "강달러·긴축 → 연중 최저, 외국인 연속 매도",            "🐻", "down"),
+    ("2022-11-30", "ChatGPT 출시",           "AI 수혜주(삼성·SK) 반등 기대감",                     "🧠", "up"),
+    # 2023
+    ("2023-01-30", "한은 금리 동결 전환",     "3.50% 정점 시사 → 금리 인상 사이클 종료",              "🔄", "up"),
+    ("2023-05-30", "KOSPI 2,600 회복",       "반도체 업황 회복 기대 → 삼성전자 주도 반등",            "📊", "up"),
+    # 2024
+    ("2024-01-02", "밸류업 프로그램 발표",    "PBR 1배 미만 기업 개선 요구 → 저PBR주 급등",           "📋", "up"),
+    ("2024-08-05", "엔 캐리트레이드 청산",    "글로벌 디레버리징 → KOSPI -8.8% 블랙먼데이",          "🇯🇵", "down"),
+    ("2024-12-03", "윤석열 비상계엄 선포",    "정치 위기 → KOSPI 급락, 원화 1,440원 돌파",           "🚨", "down"),
+    ("2024-12-14", "윤석열 탄핵 가결",        "불확실성 정점 후 정치 리스크 일부 해소",               "⚖️", "up"),
+    # 2025
+    ("2025-01-27", "DeepSeek AI 쇼크",       "중국 AI 충격 → 삼성전자·SK하이닉스 급락",             "🤖", "down"),
+    ("2025-04-02", "Liberation Day 관세",    "한국산 제품 25% 관세 → 수출주 폭락, KOSPI -4%",       "🚨", "down"),
+    ("2025-04-09", "관세 90일 유예",          "한국 포함 유예 → KOSPI +5% 반등",                    "🕊️", "up"),
+    ("2025-05-12", "미중 관세 합의",          "글로벌 무역 완화 → 한국 수출 수혜 기대",               "🤝", "up"),
+    ("2025-06-03", "한은 기준금리 2.50% 인하", "경기 부양 위해 추가 인하 → 유동성 확대",              "✂️", "up"),
+]
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 국가별 설정
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COUNTRY_CONFIG = {
+    "🇺🇸 미국": {
+        "indices": {"NASDAQ": "^IXIC", "S&P 500": "^GSPC", "다우존스": "^DJI"},
+        "default_idx": 0,
+        "fred_liq": "BOGMBASE",      # 본원통화 (Millions USD)
+        "fred_rec": "USREC",          # 경기침체 지표
+        "liq_divisor": 1000,          # Millions → Billions
+        "liq_label": "본원통화",
+        "liq_unit": "$B",
+        "liq_prefix": "$",
+        "liq_suffix": "B",
+        "events": MARKET_PIVOTS,
+        "data_src": "Federal Reserve (FRED) · Yahoo Finance",
+    },
+    "🇰🇷 대한민국": {
+        "indices": {"KOSPI": "^KS11", "KOSDAQ": "^KQ11"},
+        "default_idx": 0,
+        "fred_liq": "MYAGM2KRA196N",  # M2 통화량 (Local Currency, Billions KRW)
+        "fred_rec": None,              # 한국 경기침체 지표 없음
+        "liq_divisor": 1e6,            # Millions → 조원 (1e6)
+        "liq_label": "M2 통화량",
+        "liq_unit": "조원",
+        "liq_prefix": "₩",
+        "liq_suffix": "조",
+        "events": MARKET_PIVOTS_KR,
+        "data_src": "FRED (World Bank) · Yahoo Finance",
+    },
+}
+
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def load_data(ticker="^IXIC"):
+def load_data(ticker, fred_liq, fred_rec, liq_divisor):
     try:
         end_dt = datetime.now()
         fetch_start = end_dt - timedelta(days=365 * 14)
 
         # [A] FRED 데이터 (유동성)
         try:
-            fred_df = web.DataReader(["BOGMBASE", "USREC"], "fred", fetch_start, end_dt).ffill()
-            fred_df.columns = ["Liquidity", "Recession"]
-            fred_df["Liquidity"] = fred_df["Liquidity"] / 1000  # $B 단위
+            fred_codes = [fred_liq]
+            if fred_rec:
+                fred_codes.append(fred_rec)
+            fred_df = web.DataReader(fred_codes, "fred", fetch_start, end_dt).ffill()
+            if fred_rec:
+                fred_df.columns = ["Liquidity", "Recession"]
+            else:
+                fred_df.columns = ["Liquidity"]
+                fred_df["Recession"] = 0
+            fred_df["Liquidity"] = fred_df["Liquidity"] / liq_divisor
         except Exception as e:
             st.error(f"FRED 데이터 로드 실패: {e}")
             return None, None
@@ -265,7 +353,6 @@ def load_data(ticker="^IXIC"):
         if 'SP500' in df.columns:
             df["Liq_MA"] = df["Liquidity"].rolling(10).mean()
             df["SP_MA"] = df["SP500"].rolling(10).mean()
-            # ── YoY 계산 (252 거래일 ≈ 1년) ──
             df["Liq_YoY"] = df["Liquidity"].pct_change(252) * 100
             df["SP_YoY"] = df["SP500"].pct_change(252) * 100
         else:
@@ -351,12 +438,12 @@ st.markdown("""
     <div class="page-title">유동성 × 시장 분석기</div>
 </div>
 <div class="page-desc">
-    연준 본원통화(Monetary Base)와 주가지수의 상관관계를 분석합니다.<br>
+    중앙은행 통화량과 주가지수의 상관관계를 분석합니다.<br>
     유동성 흐름이 주가에 미치는 영향을 시각적으로 확인하세요.
 </div>
 """, unsafe_allow_html=True)
 
-# 새로고침 상태 바 + 지수 선택
+# 새로고침 상태 바
 now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 next_str = NEXT_REFRESH_TIME.strftime("%m/%d %H:%M KST")
 st.markdown(f"""
@@ -368,28 +455,39 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 데이터 로드 (지수 선택 → 즉시 로드)
+# 국가 선택 & 데이터 로드
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-INDEX_OPTIONS = {"NASDAQ": "^IXIC", "S&P 500": "^GSPC", "다우존스": "^DJI"}
-hdr1, hdr2 = st.columns([1.5, 5.5])
-with hdr1:
-    idx_name = st.selectbox("📈 지수 선택", list(INDEX_OPTIONS.keys()), index=0)
-idx_ticker = INDEX_OPTIONS[idx_name]
+country_col, _ = st.columns([1.5, 5.5])
+with country_col:
+    country = st.selectbox("🌍 국가", list(COUNTRY_CONFIG.keys()), index=0)
 
-with st.spinner(f"FRED & {idx_name} 데이터를 불러오는 중..."):
-    df, ohlc_raw = load_data(idx_ticker)
+CC = COUNTRY_CONFIG[country]  # 현재 국가 설정
+IDX_OPTIONS = CC["indices"]
+
+# 국가 변경 시 지수 키 초기화
+if st.session_state.get("_prev_country") != country:
+    st.session_state["_prev_country"] = country
+    st.session_state["idx_select"] = list(IDX_OPTIONS.keys())[CC["default_idx"]]
+
+# 위젯 키에서 현재 선택된 지수 읽기 (selectbox rerun 시 자동 반영)
+idx_name = st.session_state.get("idx_select", list(IDX_OPTIONS.keys())[CC["default_idx"]])
+if idx_name not in IDX_OPTIONS:
+    idx_name = list(IDX_OPTIONS.keys())[0]
+idx_ticker = IDX_OPTIONS[idx_name]
+
+with st.spinner(f"{CC['liq_label']} & {idx_name} 데이터를 불러오는 중..."):
+    df, ohlc_raw = load_data(idx_ticker, CC["fred_liq"], CC["fred_rec"], CC["liq_divisor"])
 
 if df is None or df.empty:
     st.error("데이터를 불러올 수 없습니다. 잠시 후 새로고침 해주세요.")
     st.stop()
 
-# ── 자동 이벤트 감지: OHLC에서 ±3% 이상 일변동을 자동 추가 ──
-def detect_auto_events(ohlc_df, threshold=0.03):
-    """OHLC 데이터에서 큰 변동일을 자동 감지하여 이벤트 리스트 반환"""
+# ── 자동 이벤트 감지: OHLC ±3% 일변동 자동 추가 ──
+def detect_auto_events(ohlc_df, base_events, threshold=0.03):
     if ohlc_df is None or ohlc_df.empty or len(ohlc_df) < 2:
         return []
     daily_ret = ohlc_df["Close"].pct_change()
-    existing_dates = {pd.to_datetime(d).date() for d, *_ in MARKET_PIVOTS}
+    existing_dates = {pd.to_datetime(d).date() for d, *_ in base_events}
     auto = []
     for dt_idx, ret in daily_ret.items():
         if pd.isna(ret) or dt_idx.date() in existing_dates:
@@ -406,8 +504,9 @@ def detect_auto_events(ohlc_df, threshold=0.03):
         existing_dates.add(dt_idx.date())
     return auto
 
-AUTO_EVENTS = detect_auto_events(ohlc_raw)
-ALL_EVENTS = sorted(MARKET_PIVOTS + AUTO_EVENTS, key=lambda x: x[0])
+BASE_EVENTS = CC["events"]
+AUTO_EVENTS = detect_auto_events(ohlc_raw, BASE_EVENTS)
+ALL_EVENTS = sorted(BASE_EVENTS + AUTO_EVENTS, key=lambda x: x[0])
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # KPI
@@ -427,11 +526,13 @@ def delta_html(val):
 corr_cls = "up" if corr_val >= 0.3 else "down"
 corr_desc = "강한 양의 상관" if corr_val >= 0.5 else ("약한 양의 상관" if corr_val >= 0 else "음의 상관")
 
+liq_display = f"{CC['liq_prefix']}{liq_val:,.0f}{CC['liq_suffix']}"
+
 st.markdown(f"""
 <div class="kpi-grid">
     <div class="kpi blue">
-        <div class="kpi-label">💵 본원통화</div>
-        <div class="kpi-value">${liq_val:,.0f}B</div>
+        <div class="kpi-label">💵 {CC['liq_label']}</div>
+        <div class="kpi-value">{liq_display}</div>
         {delta_html(liq_yoy)}
     </div>
     <div class="kpi red">
@@ -454,7 +555,7 @@ st.markdown(f"""
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Daily Brief
+# Daily Brief (국가별 동적 생성)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 today_str = datetime.now().strftime("%Y년 %m월 %d일")
 liq_3m = df["Liquidity"].dropna()
@@ -469,14 +570,8 @@ elif corr_val < 0 or liq_3m_chg < -1:
 else:
     signal_class, signal_text = "signal-neutral", "🟡 혼합 시그널 → 방향성 주시"
 
-st.markdown(f"""
-<div class="report-box">
-    <div class="report-header">
-        <span class="report-badge">Daily Brief</span>
-        <span class="report-date">{today_str} 기준</span>
-    </div>
-    <div class="report-title">📋 오늘의 유동성 & 시장 브리핑</div>
-    <div class="report-body">
+if country == "🇺🇸 미국":
+    brief_body = f"""
         <strong>▎연준 정책 현황</strong><br>
         연방기금금리 <span class="hl">3.50–3.75%</span> 유지 (1/28 FOMC).
         QT는 12/1에 공식 종료되었으며, 12/12부터 <strong>준비금 관리 매입(RMP)</strong>을 통해 국채 매입을 재개하여
@@ -485,37 +580,66 @@ st.markdown(f"""
         시장은 하반기 1~2회 추가 인하를 기대하고 있습니다.
         <hr class="report-divider">
         <strong>▎유동성 데이터</strong><br>
-        본원통화 최신치 <span class="hl">${liq_val:,.0f}B</span> (YoY {liq_yoy:+.1f}%).
+        본원통화 최신치 <span class="hl">{liq_display}</span> (YoY {liq_yoy:+.1f}%).
         3개월 변화율 <span class="hl">{liq_3m_chg:+.1f}%</span>.
         QT 종료와 RMP 개시로 유동성 바닥이 형성되었으며, 완만한 확장 추세에 진입했습니다.
-        은행 지준이 5년래 저점에 근접해 Fed의 SRF(상시 레포 기구) 이용이 증가하고 있습니다.
         <hr class="report-divider">
         <strong>▎시장 반응</strong><br>
         {idx_name} <span class="hl">{sp_val:,.0f}</span> (1개월 {sp_1m_chg:+.1f}%, YoY {sp_yoy:+.1f}%).
-        1/28 장중 <strong>7,000</strong> 첫 돌파 후 소폭 후퇴 중.
-        월가 컨센서스 2026년말 목표치 7,500 (범위 7,000~8,100).
         AI 슈퍼사이클과 OBBBA(감세 연장·R&D 비용처리) 재정부양이 주가를 지지하나,
         높은 밸류에이션(CAPE ~39배)과 시장 집중도 심화가 리스크입니다.
+    """
+else:  # 한국
+    brief_body = f"""
+        <strong>▎한국은행 통화정책 현황</strong><br>
+        기준금리 <span class="hl">2.50%</span> (2025/6 기준).
+        글로벌 긴축 완화 흐름에 맞춰 한은도 인하 기조를 유지하고 있으며,
+        원/달러 환율 안정과 가계부채 관리가 추가 인하의 핵심 변수입니다.
+        수출 회복과 반도체 업황 개선이 경기 지지 요인입니다.
+        <hr class="report-divider">
+        <strong>▎유동성 데이터</strong><br>
+        M2 통화량 최신치 <span class="hl">{liq_display}</span> (YoY {liq_yoy:+.1f}%).
+        3개월 변화율 <span class="hl">{liq_3m_chg:+.1f}%</span>.
+        가계·기업 대출 증가와 정부 재정지출 확대로 M2 증가세가 지속되고 있습니다.
+        <hr class="report-divider">
+        <strong>▎시장 반응</strong><br>
+        {idx_name} <span class="hl">{sp_val:,.0f}</span> (1개월 {sp_1m_chg:+.1f}%, YoY {sp_yoy:+.1f}%).
+        반도체 수출 호조와 AI 수혜 기대감이 시장을 지지하나,
+        미중 관세 리스크와 원화 약세, 코리아 디스카운트가 지속적 부담입니다.
+    """
+
+st.markdown(f"""
+<div class="report-box">
+    <div class="report-header">
+        <span class="report-badge">Daily Brief</span>
+        <span class="report-date">{today_str} 기준</span>
+    </div>
+    <div class="report-title">📋 오늘의 유동성 & 시장 브리핑</div>
+    <div class="report-body">
+        {brief_body}
         <hr class="report-divider">
         <strong>▎상관관계 진단</strong><br>
         90일 롤링 상관계수 <span class="hl">{corr_val:.3f}</span>.
-        {'유동성과 주가가 강한 동행 관계를 유지 중입니다. 유동성 방향이 주가의 핵심 변수입니다.' if corr_val > 0.5
-         else '유동성-주가 동조성이 약화된 구간으로, 실적·금리·지정학 등 다른 변수의 영향력이 큰 시기입니다.' if corr_val > 0
-         else '음의 상관으로 전환되어, 유동성과 주가가 다른 방향으로 움직이는 특이 구간입니다.'}
+        {'유동성과 주가가 강한 동행 관계를 유지 중입니다.' if corr_val > 0.5
+         else '유동성-주가 동조성이 약화된 구간입니다.' if corr_val > 0
+         else '음의 상관으로 전환된 특이 구간입니다.'}
     </div>
     <div class="report-signal {signal_class}">{signal_text}</div>
 </div>
 """, unsafe_allow_html=True)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 차트 컨트롤 (Daily Brief ↓, 차트 ↑)
+# 차트 컨트롤 (지수 + 분석기간 + 봉주기 + 이벤트)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-c1, c2, c3 = st.columns([1.5, 2.5, 1])
+c1, c2, c3, c4 = st.columns([1.3, 1.3, 2.4, 1])
 with c1:
-    period = st.selectbox("📅 분석 기간", ["3년", "5년", "7년", "10년", "전체"], index=3)
+    idx_name = st.selectbox("📈 지수", list(IDX_OPTIONS.keys()), key="idx_select")
+    idx_ticker = IDX_OPTIONS[idx_name]
 with c2:
-    tf = st.radio("🕯️ 봉 주기", ["일봉", "주봉", "월봉"], horizontal=True, key="candle_tf", index=2)
+    period = st.selectbox("📅 분석 기간", ["3년", "5년", "7년", "10년", "전체"], index=3)
 with c3:
+    tf = st.radio("🕯️ 봉 주기", ["일봉", "주봉", "월봉"], horizontal=True, key="candle_tf", index=2)
+with c4:
     show_events = st.toggle("📌 이벤트", value=True)
 
 period_map = {"3년": 3, "5년": 5, "7년": 7, "10년": 10, "전체": 12}
@@ -560,11 +684,12 @@ fig_candle = make_subplots(
 
 # 유동성 (우측 Y축, 배경 영역) — 캔들 뒤에 깔기
 liq_series = dff["Liq_MA"].dropna()
+liq_hover_fmt = f"%{{y:,.0f}}{CC['liq_suffix']}<extra>{CC['liq_label']}</extra>"
 fig_candle.add_trace(go.Scatter(
-    x=liq_series.index, y=liq_series, name="본원통화 ($B)",
+    x=liq_series.index, y=liq_series, name=f"{CC['liq_label']} ({CC['liq_unit']})",
     fill="tozeroy", fillcolor="rgba(59,130,246,0.07)",
     line=dict(color="rgba(59,130,246,0.4)", width=1.5),
-    hovertemplate="$%{y:,.0f}B<extra>본원통화</extra>"
+    hovertemplate=liq_hover_fmt
 ), row=1, col=1, secondary_y=True)
 
 # 캔들스틱
@@ -627,17 +752,28 @@ fig_candle.update_layout(
 fig_candle.update_xaxes(ax(), row=1, col=1)
 fig_candle.update_xaxes(ax(), row=2, col=1)
 fig_candle.update_yaxes(ax(dict(title_text=idx_name)), row=1, col=1, secondary_y=False)
-# 유동성 Y축 범위 계산: 하한 3000, 변동 시각화 1.6배 확대
-liq_y_min = 3
+# 유동성 Y축 범위 계산: 데이터 하한 기반으로 동적 설정
+liq_min_val = liq_series.min()
 liq_max_val = liq_series.max()
-liq_y_max = liq_y_min + liq_max_val / 1.6  # 1.6배 확대 비율
+liq_y_min = liq_min_val * 0.85  # 하한 15% 여유
+liq_y_max = liq_y_min + (liq_max_val - liq_y_min) / 0.6  # 변동 시각화 확대
 
-fig_candle.update_yaxes(ax(dict(title_text="본원통화 ($B)", tickprefix="$",
+fig_candle.update_yaxes(ax(dict(title_text=f"{CC['liq_label']} ({CC['liq_unit']})",
     title_font=dict(color="#3b82f6"), tickfont=dict(color="#3b82f6", size=10),
     showgrid=False, range=[liq_y_min, liq_y_max])), row=1, col=1, secondary_y=True)
 fig_candle.update_yaxes(ax(dict(title_text="거래량", tickformat=".2s", fixedrange=True)), row=2, col=1)
 st.plotly_chart(fig_candle, use_container_width=True,
-                config={"scrollZoom": True, "displayModeBar": False})
+                config={"scrollZoom": True, "displayModeBar": False, "responsive": True})
+
+# 모바일 핀치 줌 강제 활성화 (JS 주입)
+st.markdown("""
+<script>
+document.querySelectorAll('.js-plotly-plot').forEach(function(plot) {
+    plot.style.touchAction = 'none';
+    plot.addEventListener('touchstart', function(e) {}, {passive: false});
+});
+</script>
+""", unsafe_allow_html=True)
 
 # 최근 캔들 요약
 if len(ohlc_chart) >= 2:
@@ -653,7 +789,7 @@ if len(ohlc_chart) >= 2:
         &nbsp;(<span style="color:var(--accent-{'green' if chg>=0 else 'red'})">{chg_arrow} {chg:+.2f}%</span>)
         &nbsp;|&nbsp; 이평선: <span style="color:#f59e0b">MA20</span> ·
         <span style="color:#3b82f6">MA60</span> · <span style="color:#8b5cf6">MA120</span>
-        &nbsp;|&nbsp; <span style="color:rgba(59,130,246,0.6)">파란 영역</span> = 본원통화 (우측 축)
+        &nbsp;|&nbsp; <span style="color:rgba(59,130,246,0.6)">파란 영역</span> = {CC['liq_label']} (우측 축)
     </div>""", unsafe_allow_html=True)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -689,7 +825,7 @@ st.markdown(tl_html + "</div>", unsafe_allow_html=True)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 st.markdown(f"""
 <div class="app-footer">
-    데이터: Federal Reserve (FRED) · Yahoo Finance &nbsp;|&nbsp; 마지막 업데이트: {df.index.max().strftime('%Y-%m-%d')}
+    데이터: {CC['data_src']} &nbsp;|&nbsp; 마지막 업데이트: {df.index.max().strftime('%Y-%m-%d')}
     &nbsp;|&nbsp; 자동 갱신: 하루 4회 (PST·KST 09:00/18:00) &nbsp;|&nbsp; 본 페이지는 투자 조언이 아닙니다
 </div>
 """, unsafe_allow_html=True)
