@@ -221,10 +221,9 @@ MARKET_PIVOTS = [
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def load_data():
+def load_data(ticker="^IXIC"):
     try:
         end_dt = datetime.now()
-        # 데이터 수집 시작 시점 (충분히 확보)
         fetch_start = end_dt - timedelta(days=365 * 14)
 
         # [A] FRED 데이터 (유동성)
@@ -236,22 +235,21 @@ def load_data():
             st.error(f"FRED 데이터 로드 실패: {e}")
             return None, None
 
-        # [B] S&P 500 데이터 (yfinance 사용 - OHLC 전체)
+        # [B] 주가 지수 데이터 (yfinance - OHLC)
         try:
             import yfinance as yf
-            yf_data = yf.download("^GSPC", start=fetch_start, end=end_dt, progress=False)
+            yf_data = yf.download(ticker, start=fetch_start, end=end_dt, progress=False)
             
             if yf_data.empty:
                 st.error("지수 데이터를 가져오지 못했습니다. (데이터가 비어있음)")
                 return None, None
             
-            # 최신 yfinance의 MultiIndex 구조 대응
             if isinstance(yf_data.columns, pd.MultiIndex):
-                spx = yf_data['Close'][['^GSPC']].rename(columns={'^GSPC': 'SP500'})
-                ohlc = yf_data[[('Open','^GSPC'),('High','^GSPC'),('Low','^GSPC'),('Close','^GSPC'),('Volume','^GSPC')]].copy()
+                idx_close = yf_data['Close'][[ticker]].rename(columns={ticker: 'SP500'})
+                ohlc = yf_data[[('Open',ticker),('High',ticker),('Low',ticker),('Close',ticker),('Volume',ticker)]].copy()
                 ohlc.columns = ['Open','High','Low','Close','Volume']
             else:
-                spx = yf_data[['Close']].rename(columns={'Close': 'SP500'})
+                idx_close = yf_data[['Close']].rename(columns={'Close': 'SP500'})
                 ohlc = yf_data[['Open','High','Low','Close','Volume']].copy()
                 
         except Exception as e:
@@ -259,13 +257,16 @@ def load_data():
             return None, None
 
         # [C] 데이터 통합 및 가공
-        df = pd.concat([fred_df, spx], axis=1).ffill()
+        df = pd.concat([fred_df, idx_close], axis=1).ffill()
         
         if 'SP500' in df.columns:
             df["Liq_MA"] = df["Liquidity"].rolling(10).mean()
             df["SP_MA"] = df["SP500"].rolling(10).mean()
+            # ── YoY 계산 (252 거래일 ≈ 1년) ──
+            df["Liq_YoY"] = df["Liquidity"].pct_change(252) * 100
+            df["SP_YoY"] = df["SP500"].pct_change(252) * 100
         else:
-            st.error("데이터 통합 과정에서 'SP500' 컬럼을 생성하지 못했습니다.")
+            st.error("데이터 통합 과정에서 주가 컬럼을 생성하지 못했습니다.")
             return None, None
 
         for c in ["Liquidity", "SP500"]:
@@ -299,19 +300,25 @@ BASE_LAYOUT = dict(
     font=dict(family="Pretendard, sans-serif", color="#475569", size=12),
     hovermode="x unified",
     hoverlabel=dict(bgcolor="white", bordercolor="#e2e8f0", font=dict(color="#1e293b", size=12)),
-    margin=dict(t=30, b=35, l=55, r=20), dragmode="pan",
+    margin=dict(t=60, b=35, l=55, r=20), dragmode="pan",
 )
 
-def add_events_to_fig(fig, dff, has_rows=False):
+def add_events_to_fig(fig, dff, has_rows=False, min_gap_days=30):
+    """이벤트를 차트에 추가. min_gap_days로 최소 간격 제어하여 겹침 방지"""
+    prev_dt = None
     for date_str, title, _, emoji, direction in MARKET_PIVOTS:
         dt = pd.to_datetime(date_str)
         if dt < dff.index.min() or dt > dff.index.max():
             continue
+        # 최소 간격 필터: 이전 이벤트와 너무 가까우면 스킵
+        if prev_dt and (dt - prev_dt).days < min_gap_days:
+            continue
+        prev_dt = dt
         kw = dict(row="all", col=1) if has_rows else {}
         fig.add_vline(x=dt, line_width=1, line_dash="dot", line_color=C["event"], **kw)
         clr = "#10b981" if direction == "up" else "#ef4444"
         fig.add_annotation(x=dt, y=1.04, yref="paper", text=f"{emoji} {title}",
-            showarrow=False, font=dict(size=9, color=clr), textangle=-38, xanchor="left")
+            showarrow=False, font=dict(size=11, color=clr), textangle=-38, xanchor="left")
 
 def add_recession(fig, dff, has_rows=False):
     rec_idx = dff[dff["Recession"] == 1].index
@@ -358,10 +365,16 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 데이터 로드
+# 지수 선택 & 데이터 로드
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-with st.spinner("FRED & Stooq 데이터를 불러오는 중..."):
-    df, ohlc_raw = load_data()
+INDEX_OPTIONS = {"NASDAQ": "^IXIC", "S&P 500": "^GSPC", "다우존스": "^DJI"}
+idx_col1, idx_col2 = st.columns([2, 5])
+with idx_col1:
+    idx_name = st.selectbox("📈 지수 선택", list(INDEX_OPTIONS.keys()), index=0)
+idx_ticker = INDEX_OPTIONS[idx_name]
+
+with st.spinner(f"FRED & {idx_name} 데이터를 불러오는 중..."):
+    df, ohlc_raw = load_data(idx_ticker)
 
 if df is None or df.empty:
     st.error("데이터를 불러올 수 없습니다. 잠시 후 새로고침 해주세요.")
@@ -374,8 +387,8 @@ if df is None or df.empty:
 latest = df.dropna(subset=["Liquidity", "SP500"]).iloc[-1]
 liq_val = latest["Liquidity"]
 sp_val = latest["SP500"]
-liq_yoy = latest.get("Liq_YoY", 0) if not np.isnan(latest.get("Liq_YoY", 0)) else 0
-sp_yoy = latest.get("SP_YoY", 0) if not np.isnan(latest.get("SP_YoY", 0)) else 0
+liq_yoy = latest["Liq_YoY"] if pd.notna(latest.get("Liq_YoY")) else 0
+sp_yoy = latest["SP_YoY"] if pd.notna(latest.get("SP_YoY")) else 0
 corr_val = df["Corr_90d"].dropna().iloc[-1] if len(df["Corr_90d"].dropna()) > 0 else 0
 
 def delta_html(val):
@@ -394,7 +407,7 @@ st.markdown(f"""
         {delta_html(liq_yoy)}
     </div>
     <div class="kpi red">
-        <div class="kpi-label">📈 S&P 500</div>
+        <div class="kpi-label">📈 {idx_name}</div>
         <div class="kpi-value">{sp_val:,.0f}</div>
         {delta_html(sp_yoy)}
     </div>
@@ -450,7 +463,7 @@ st.markdown(f"""
         은행 지준이 5년래 저점에 근접해 Fed의 SRF(상시 레포 기구) 이용이 증가하고 있습니다.
         <hr class="report-divider">
         <strong>▎시장 반응</strong><br>
-        S&P 500 <span class="hl">{sp_val:,.0f}</span> (1개월 {sp_1m_chg:+.1f}%).
+        {idx_name} <span class="hl">{sp_val:,.0f}</span> (1개월 {sp_1m_chg:+.1f}%, YoY {sp_yoy:+.1f}%).
         1/28 장중 <strong>7,000</strong> 첫 돌파 후 소폭 후퇴 중.
         월가 컨센서스 2026년말 목표치 7,500 (범위 7,000~8,100).
         AI 슈퍼사이클과 OBBBA(감세 연장·R&D 비용처리) 재정부양이 주가를 지지하나,
@@ -536,7 +549,7 @@ fig_candle.add_trace(go.Candlestick(
     low=ohlc_chart["Low"], close=ohlc_chart["Close"],
     increasing_line_color="#10b981", increasing_fillcolor="#10b981",
     decreasing_line_color="#ef4444", decreasing_fillcolor="#ef4444",
-    name="S&P 500", whiskerwidth=0.4,
+    name=idx_name, whiskerwidth=0.4,
 ), row=1, col=1)
 
 # 이동평균선
@@ -557,18 +570,24 @@ fig_candle.add_trace(go.Bar(
     hovertemplate="%{y:,.0f}<extra>Volume</extra>"
 ), row=2, col=1)
 
-# 이벤트 표시
+# 이벤트 표시 (봉 주기에 따라 최소 간격 조절)
 if show_events:
+    gap_map = {"일봉": 14, "주봉": 45, "월봉": 120}
+    min_gap = gap_map.get(tf, 30)
+    prev_dt = None
     for date_str, title, _, emoji, direction in MARKET_PIVOTS:
         dt = pd.to_datetime(date_str)
         if dt < ohlc_chart.index.min() or dt > ohlc_chart.index.max():
             continue
+        if prev_dt and (dt - prev_dt).days < min_gap:
+            continue
+        prev_dt = dt
         fig_candle.add_vline(x=dt, line_width=1, line_dash="dot",
             line_color=C["event"], row="all", col=1)
         clr = "#10b981" if direction == "up" else "#ef4444"
         fig_candle.add_annotation(x=dt, y=1.04, yref="paper",
             text=f"{emoji} {title}", showarrow=False,
-            font=dict(size=9, color=clr), textangle=-38, xanchor="left")
+            font=dict(size=11, color=clr), textangle=-38, xanchor="left")
 
 # 리세션 음영
 add_recession(fig_candle, dff, True)
@@ -582,7 +601,7 @@ fig_candle.update_layout(
 )
 fig_candle.update_xaxes(ax(), row=1, col=1)
 fig_candle.update_xaxes(ax(), row=2, col=1)
-fig_candle.update_yaxes(ax(dict(title_text="S&P 500")), row=1, col=1, secondary_y=False)
+fig_candle.update_yaxes(ax(dict(title_text=idx_name)), row=1, col=1, secondary_y=False)
 # 유동성 Y축 범위 계산: 하한 3000, 변동 시각화 1.6배 확대
 liq_y_min = 3
 liq_max_val = liq_series.max()
@@ -645,7 +664,7 @@ st.markdown(tl_html + "</div>", unsafe_allow_html=True)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 st.markdown(f"""
 <div class="app-footer">
-    데이터: Federal Reserve (FRED) · Stooq &nbsp;|&nbsp; 마지막 업데이트: {df.index.max().strftime('%Y-%m-%d')}
+    데이터: Federal Reserve (FRED) · Yahoo Finance &nbsp;|&nbsp; 마지막 업데이트: {df.index.max().strftime('%Y-%m-%d')}
     &nbsp;|&nbsp; 자동 갱신: 하루 4회 (PST·KST 09:00/18:00) &nbsp;|&nbsp; 본 페이지는 투자 조언이 아닙니다
 </div>
 """, unsafe_allow_html=True)
