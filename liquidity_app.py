@@ -162,6 +162,9 @@ footer { display: none !important; }
     color: var(--text-secondary)!important; font-weight:600!important; font-size:0.82rem!important;
 }
 .app-footer { text-align:center; color:var(--text-muted); font-size:0.75rem; margin-top:2rem; padding:1rem; border-top:1px solid var(--border); }
+
+/* 모바일 터치: Plotly 차트 내 핀치 줌 활성화 */
+.js-plotly-plot, .plotly { touch-action: none; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -365,12 +368,19 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 지수 선택 & 데이터 로드
+# 컨트롤 & 데이터 로드
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 INDEX_OPTIONS = {"NASDAQ": "^IXIC", "S&P 500": "^GSPC", "다우존스": "^DJI"}
-idx_col1, idx_col2 = st.columns([2, 5])
-with idx_col1:
-    idx_name = st.selectbox("📈 지수 선택", list(INDEX_OPTIONS.keys()), index=0)
+c1, c2, c3, c4 = st.columns([1.4, 1.4, 2.2, 1])
+with c1:
+    idx_name = st.selectbox("📈 지수", list(INDEX_OPTIONS.keys()), index=0)
+with c2:
+    period = st.selectbox("📅 분석 기간", ["3년", "5년", "7년", "10년", "전체"], index=3)
+with c3:
+    tf = st.radio("🕯️ 봉 주기", ["일봉", "주봉", "월봉"], horizontal=True, key="candle_tf", index=2)
+with c4:
+    show_events = st.toggle("📌 이벤트", value=True)
+
 idx_ticker = INDEX_OPTIONS[idx_name]
 
 with st.spinner(f"FRED & {idx_name} 데이터를 불러오는 중..."):
@@ -379,6 +389,11 @@ with st.spinner(f"FRED & {idx_name} 데이터를 불러오는 중..."):
 if df is None or df.empty:
     st.error("데이터를 불러올 수 없습니다. 잠시 후 새로고침 해주세요.")
     st.stop()
+
+period_map = {"3년": 3, "5년": 5, "7년": 7, "10년": 10, "전체": 12}
+period_years = period_map[period]
+cutoff = datetime.now() - timedelta(days=365 * period_years)
+dff = df[df.index >= pd.to_datetime(cutoff)].copy()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -481,21 +496,6 @@ st.markdown(f"""
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 컨트롤
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-col1, col2, _ = st.columns([1.5, 1.5, 4])
-with col1:
-    period = st.selectbox("📅 분석 기간", ["3년", "5년", "7년", "10년", "전체"], index=3)
-with col2:
-    show_events = st.toggle("📌 이벤트 표시", value=True)
-
-period_map = {"3년": 3, "5년": 5, "7년": 7, "10년": 10, "전체": 12}
-period_years = period_map[period]
-cutoff = datetime.now() - timedelta(days=365 * period_years)
-dff = df[df.index >= pd.to_datetime(cutoff)].copy()
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 차트
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -505,10 +505,6 @@ def resample_ohlc(ohlc_df, rule):
     return ohlc_df.resample(rule).agg({
         'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
     }).dropna()
-
-cc1, cc2 = st.columns([1.5, 5.5])
-with cc1:
-    tf = st.radio("봉 주기", ["일봉", "주봉", "월봉"], horizontal=True, key="candle_tf", index=1)
 
 # 기간 필터링된 OHLC 데이터
 ohlc_filtered = ohlc_raw[ohlc_raw.index >= pd.to_datetime(cutoff)].copy()
