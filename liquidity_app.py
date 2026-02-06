@@ -459,7 +459,7 @@ st.markdown(f"""
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 col1, col2, _ = st.columns([1.5, 1.5, 4])
 with col1:
-    period = st.selectbox("📅 분석 기간", ["3년", "5년", "7년", "10년", "전체"], index=3)
+    period = st.selectbox("📅 분석 기간", ["3년", "5년", "7년", "10년", "전체"], index=1)
 with col2:
     show_events = st.toggle("📌 이벤트 표시", value=True)
 
@@ -482,7 +482,7 @@ def resample_ohlc(ohlc_df, rule):
 
 cc1, cc2 = st.columns([1.5, 5.5])
 with cc1:
-    tf = st.radio("봉 주기", ["일봉", "주봉", "월봉"], horizontal=True, key="candle_tf", index=1)
+    tf = st.radio("봉 주기", ["일봉", "주봉", "월봉"], horizontal=True, key="candle_tf")
 
 # 기간 필터링된 OHLC 데이터
 ohlc_filtered = ohlc_raw[ohlc_raw.index >= pd.to_datetime(cutoff)].copy()
@@ -570,14 +570,9 @@ fig_candle.update_layout(
 fig_candle.update_xaxes(ax(), row=1, col=1)
 fig_candle.update_xaxes(ax(), row=2, col=1)
 fig_candle.update_yaxes(ax(dict(title_text="S&P 500")), row=1, col=1, secondary_y=False)
-# 유동성 Y축 범위 계산: 하한 3000, 변동 시각화 1.6배 확대
-liq_y_min = 3000
-liq_max_val = liq_series.max()
-liq_y_max = liq_y_min + liq_max_val / 1.6  # 1.6배 확대 비율
-
 fig_candle.update_yaxes(ax(dict(title_text="본원통화 ($B)", tickprefix="$",
     title_font=dict(color="#3b82f6"), tickfont=dict(color="#3b82f6", size=10),
-    showgrid=False, range=[liq_y_min, liq_y_max])), row=1, col=1, secondary_y=True)
+    showgrid=False)), row=1, col=1, secondary_y=True)
 fig_candle.update_yaxes(ax(dict(title_text="거래량", tickformat=".2s")), row=2, col=1)
 st.plotly_chart(fig_candle, use_container_width=True,
                 config={"scrollZoom": True, "displayModeBar": False})
