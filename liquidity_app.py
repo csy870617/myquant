@@ -509,7 +509,17 @@ with tab1:
 
     fig_candle = make_subplots(
         rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03,
-        row_heights=[0.75, 0.25])
+        row_heights=[0.75, 0.25],
+        specs=[[{"secondary_y": True}], [{"secondary_y": False}]])
+
+    # 유동성 (우측 Y축, 배경 영역) — 캔들 뒤에 깔기
+    liq_series = dff["Liq_MA"].dropna()
+    fig_candle.add_trace(go.Scatter(
+        x=liq_series.index, y=liq_series, name="본원통화 ($B)",
+        fill="tozeroy", fillcolor="rgba(59,130,246,0.07)",
+        line=dict(color="rgba(59,130,246,0.4)", width=1.5),
+        hovertemplate="$%{y:,.0f}B<extra>본원통화</extra>"
+    ), row=1, col=1, secondary_y=True)
 
     # 캔들스틱
     fig_candle.add_trace(go.Candlestick(
@@ -564,7 +574,10 @@ with tab1:
     )
     fig_candle.update_xaxes(ax(), row=1, col=1)
     fig_candle.update_xaxes(ax(), row=2, col=1)
-    fig_candle.update_yaxes(ax(dict(title_text="S&P 500")), row=1, col=1)
+    fig_candle.update_yaxes(ax(dict(title_text="S&P 500")), row=1, col=1, secondary_y=False)
+    fig_candle.update_yaxes(ax(dict(title_text="본원통화 ($B)", tickprefix="$",
+        title_font=dict(color="#3b82f6"), tickfont=dict(color="#3b82f6", size=10),
+        showgrid=False)), row=1, col=1, secondary_y=True)
     fig_candle.update_yaxes(ax(dict(title_text="거래량", tickformat=".2s")), row=2, col=1)
     st.plotly_chart(fig_candle, use_container_width=True,
                     config={"scrollZoom": True, "displayModeBar": False})
@@ -583,6 +596,7 @@ with tab1:
             &nbsp;(<span style="color:var(--accent-{'green' if chg>=0 else 'red'})">{chg_arrow} {chg:+.2f}%</span>)
             &nbsp;|&nbsp; 이평선: <span style="color:#f59e0b">MA20</span> ·
             <span style="color:#3b82f6">MA60</span> · <span style="color:#8b5cf6">MA120</span>
+            &nbsp;|&nbsp; <span style="color:rgba(59,130,246,0.6)">파란 영역</span> = 본원통화 (우측 축)
         </div>""", unsafe_allow_html=True)
 
 with tab2:
