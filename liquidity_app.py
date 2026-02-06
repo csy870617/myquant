@@ -141,10 +141,7 @@ html, body, [data-testid="stAppViewContainer"] {
 }
 .guide-box strong { color: var(--text-primary); }
 
-.stTabs [data-baseweb="tab-list"] { gap:0; background:var(--card); border-radius:12px; padding:4px; border:1px solid var(--border); }
-.stTabs [data-baseweb="tab"] { border-radius:9px; color:var(--text-secondary); font-weight:600; font-size:0.84rem; padding:0.45rem 1.1rem; }
-.stTabs [aria-selected="true"] { background:var(--accent-blue)!important; color:white!important; }
-.stTabs [data-baseweb="tab-highlight"], .stTabs [data-baseweb="tab-border"] { display:none; }
+
 
 div[data-testid="stMetric"] { display: none; }
 footer { display: none !important; }
@@ -473,9 +470,8 @@ dff = df[df.index >= pd.to_datetime(cutoff)].copy()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 차트 탭
+# 차트
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-tab1, tab2, tab3 = st.tabs(["🕯️  주가 차트", "🔀  오버레이 비교", "🔗  상관관계 분석"])
 
 # ── 캔들스틱 OHLC 리샘플 헬퍼 ──
 def resample_ohlc(ohlc_df, rule):
@@ -484,170 +480,119 @@ def resample_ohlc(ohlc_df, rule):
         'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
     }).dropna()
 
-with tab1:
-    cc1, cc2 = st.columns([1.5, 5.5])
-    with cc1:
-        tf = st.radio("봉 주기", ["일봉", "주봉", "월봉"], horizontal=True, key="candle_tf")
+cc1, cc2 = st.columns([1.5, 5.5])
+with cc1:
+    tf = st.radio("봉 주기", ["일봉", "주봉", "월봉"], horizontal=True, key="candle_tf")
 
-    # 기간 필터링된 OHLC 데이터
-    ohlc_filtered = ohlc_raw[ohlc_raw.index >= pd.to_datetime(cutoff)].copy()
+# 기간 필터링된 OHLC 데이터
+ohlc_filtered = ohlc_raw[ohlc_raw.index >= pd.to_datetime(cutoff)].copy()
 
-    if tf == "주봉":
-        ohlc_chart = resample_ohlc(ohlc_filtered, "W")
-    elif tf == "월봉":
-        ohlc_chart = resample_ohlc(ohlc_filtered, "ME")
-    else:
-        ohlc_chart = ohlc_filtered.copy()
+if tf == "주봉":
+    ohlc_chart = resample_ohlc(ohlc_filtered, "W")
+elif tf == "월봉":
+    ohlc_chart = resample_ohlc(ohlc_filtered, "ME")
+else:
+    ohlc_chart = ohlc_filtered.copy()
 
-    # 이동평균 (20, 60, 120 — 봉 주기에 맞게)
-    for ma_len in [20, 60, 120]:
-        ohlc_chart[f"MA{ma_len}"] = ohlc_chart["Close"].rolling(ma_len).mean()
+# 이동평균 (20, 60, 120 — 봉 주기에 맞게)
+for ma_len in [20, 60, 120]:
+    ohlc_chart[f"MA{ma_len}"] = ohlc_chart["Close"].rolling(ma_len).mean()
 
-    # 거래량 색상
-    vol_colors = ["#ef4444" if c < o else "#10b981"
-                  for o, c in zip(ohlc_chart["Open"], ohlc_chart["Close"])]
+# 거래량 색상
+vol_colors = ["#ef4444" if c < o else "#10b981"
+              for o, c in zip(ohlc_chart["Open"], ohlc_chart["Close"])]
 
-    fig_candle = make_subplots(
-        rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03,
-        row_heights=[0.75, 0.25],
-        specs=[[{"secondary_y": True}], [{"secondary_y": False}]])
+fig_candle = make_subplots(
+    rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03,
+    row_heights=[0.75, 0.25],
+    specs=[[{"secondary_y": True}], [{"secondary_y": False}]])
 
-    # 유동성 (우측 Y축, 배경 영역) — 캔들 뒤에 깔기
-    liq_series = dff["Liq_MA"].dropna()
-    fig_candle.add_trace(go.Scatter(
-        x=liq_series.index, y=liq_series, name="본원통화 ($B)",
-        fill="tozeroy", fillcolor="rgba(59,130,246,0.07)",
-        line=dict(color="rgba(59,130,246,0.4)", width=1.5),
-        hovertemplate="$%{y:,.0f}B<extra>본원통화</extra>"
-    ), row=1, col=1, secondary_y=True)
+# 유동성 (우측 Y축, 배경 영역) — 캔들 뒤에 깔기
+liq_series = dff["Liq_MA"].dropna()
+fig_candle.add_trace(go.Scatter(
+    x=liq_series.index, y=liq_series, name="본원통화 ($B)",
+    fill="tozeroy", fillcolor="rgba(59,130,246,0.07)",
+    line=dict(color="rgba(59,130,246,0.4)", width=1.5),
+    hovertemplate="$%{y:,.0f}B<extra>본원통화</extra>"
+), row=1, col=1, secondary_y=True)
 
-    # 캔들스틱
-    fig_candle.add_trace(go.Candlestick(
-        x=ohlc_chart.index,
-        open=ohlc_chart["Open"], high=ohlc_chart["High"],
-        low=ohlc_chart["Low"], close=ohlc_chart["Close"],
-        increasing_line_color="#10b981", increasing_fillcolor="#10b981",
-        decreasing_line_color="#ef4444", decreasing_fillcolor="#ef4444",
-        name="S&P 500", whiskerwidth=0.4,
-    ), row=1, col=1)
+# 캔들스틱
+fig_candle.add_trace(go.Candlestick(
+    x=ohlc_chart.index,
+    open=ohlc_chart["Open"], high=ohlc_chart["High"],
+    low=ohlc_chart["Low"], close=ohlc_chart["Close"],
+    increasing_line_color="#10b981", increasing_fillcolor="#10b981",
+    decreasing_line_color="#ef4444", decreasing_fillcolor="#ef4444",
+    name="S&P 500", whiskerwidth=0.4,
+), row=1, col=1)
 
-    # 이동평균선
-    ma_colors = {"MA20": "#f59e0b", "MA60": "#3b82f6", "MA120": "#8b5cf6"}
-    for ma_name, ma_color in ma_colors.items():
-        s = ohlc_chart[ma_name].dropna()
-        if len(s) > 0:
-            fig_candle.add_trace(go.Scatter(
-                x=s.index, y=s, name=ma_name,
-                line=dict(color=ma_color, width=1.3),
-                hovertemplate="%{y:,.0f}<extra>" + ma_name + "</extra>"
-            ), row=1, col=1)
+# 이동평균선
+ma_colors = {"MA20": "#f59e0b", "MA60": "#3b82f6", "MA120": "#8b5cf6"}
+for ma_name, ma_color in ma_colors.items():
+    s = ohlc_chart[ma_name].dropna()
+    if len(s) > 0:
+        fig_candle.add_trace(go.Scatter(
+            x=s.index, y=s, name=ma_name,
+            line=dict(color=ma_color, width=1.3),
+            hovertemplate="%{y:,.0f}<extra>" + ma_name + "</extra>"
+        ), row=1, col=1)
 
-    # 거래량
-    fig_candle.add_trace(go.Bar(
-        x=ohlc_chart.index, y=ohlc_chart["Volume"], name="거래량",
-        marker_color=vol_colors, opacity=0.5, showlegend=False,
-        hovertemplate="%{y:,.0f}<extra>Volume</extra>"
-    ), row=2, col=1)
+# 거래량
+fig_candle.add_trace(go.Bar(
+    x=ohlc_chart.index, y=ohlc_chart["Volume"], name="거래량",
+    marker_color=vol_colors, opacity=0.5, showlegend=False,
+    hovertemplate="%{y:,.0f}<extra>Volume</extra>"
+), row=2, col=1)
 
-    # 이벤트 표시
-    if show_events:
-        for date_str, title, _, emoji, direction in MARKET_PIVOTS:
-            dt = pd.to_datetime(date_str)
-            if dt < ohlc_chart.index.min() or dt > ohlc_chart.index.max():
-                continue
-            fig_candle.add_vline(x=dt, line_width=1, line_dash="dot",
-                line_color=C["event"], row="all", col=1)
-            clr = "#10b981" if direction == "up" else "#ef4444"
-            fig_candle.add_annotation(x=dt, y=1.04, yref="paper",
-                text=f"{emoji} {title}", showarrow=False,
-                font=dict(size=9, color=clr), textangle=-38, xanchor="left")
+# 이벤트 표시
+if show_events:
+    for date_str, title, _, emoji, direction in MARKET_PIVOTS:
+        dt = pd.to_datetime(date_str)
+        if dt < ohlc_chart.index.min() or dt > ohlc_chart.index.max():
+            continue
+        fig_candle.add_vline(x=dt, line_width=1, line_dash="dot",
+            line_color=C["event"], row="all", col=1)
+        clr = "#10b981" if direction == "up" else "#ef4444"
+        fig_candle.add_annotation(x=dt, y=1.04, yref="paper",
+            text=f"{emoji} {title}", showarrow=False,
+            font=dict(size=9, color=clr), textangle=-38, xanchor="left")
 
-    # 리세션 음영
-    add_recession(fig_candle, dff, True)
+# 리세션 음영
+add_recession(fig_candle, dff, True)
 
-    fig_candle.update_layout(
-        **BASE_LAYOUT, height=620, showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02,
-                    xanchor="center", x=0.5, font=dict(size=11),
-                    bgcolor="rgba(0,0,0,0)"),
-        xaxis_rangeslider_visible=False,
-    )
-    fig_candle.update_xaxes(ax(), row=1, col=1)
-    fig_candle.update_xaxes(ax(), row=2, col=1)
-    fig_candle.update_yaxes(ax(dict(title_text="S&P 500")), row=1, col=1, secondary_y=False)
-    fig_candle.update_yaxes(ax(dict(title_text="본원통화 ($B)", tickprefix="$",
-        title_font=dict(color="#3b82f6"), tickfont=dict(color="#3b82f6", size=10),
-        showgrid=False)), row=1, col=1, secondary_y=True)
-    fig_candle.update_yaxes(ax(dict(title_text="거래량", tickformat=".2s")), row=2, col=1)
-    st.plotly_chart(fig_candle, use_container_width=True,
-                    config={"scrollZoom": True, "displayModeBar": False})
+fig_candle.update_layout(
+    **BASE_LAYOUT, height=620, showlegend=True,
+    legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                xanchor="center", x=0.5, font=dict(size=11),
+                bgcolor="rgba(0,0,0,0)"),
+    xaxis_rangeslider_visible=False,
+)
+fig_candle.update_xaxes(ax(), row=1, col=1)
+fig_candle.update_xaxes(ax(), row=2, col=1)
+fig_candle.update_yaxes(ax(dict(title_text="S&P 500")), row=1, col=1, secondary_y=False)
+fig_candle.update_yaxes(ax(dict(title_text="본원통화 ($B)", tickprefix="$",
+    title_font=dict(color="#3b82f6"), tickfont=dict(color="#3b82f6", size=10),
+    showgrid=False)), row=1, col=1, secondary_y=True)
+fig_candle.update_yaxes(ax(dict(title_text="거래량", tickformat=".2s")), row=2, col=1)
+st.plotly_chart(fig_candle, use_container_width=True,
+                config={"scrollZoom": True, "displayModeBar": False})
 
-    # 최근 캔들 요약
-    if len(ohlc_chart) >= 2:
-        last = ohlc_chart.iloc[-1]
-        prev = ohlc_chart.iloc[-2]
-        chg = (last["Close"] - prev["Close"]) / prev["Close"] * 100
-        chg_cls = "up" if chg >= 0 else "down"
-        chg_arrow = "▲" if chg >= 0 else "▼"
-        st.markdown(f"""<div class="guide-box">
-            🕯️ <strong>최근 {tf}:</strong>
-            시가 <strong>{last['Open']:,.0f}</strong> · 고가 <strong>{last['High']:,.0f}</strong> ·
-            저가 <strong>{last['Low']:,.0f}</strong> · 종가 <strong>{last['Close']:,.0f}</strong>
-            &nbsp;(<span style="color:var(--accent-{'green' if chg>=0 else 'red'})">{chg_arrow} {chg:+.2f}%</span>)
-            &nbsp;|&nbsp; 이평선: <span style="color:#f59e0b">MA20</span> ·
-            <span style="color:#3b82f6">MA60</span> · <span style="color:#8b5cf6">MA120</span>
-            &nbsp;|&nbsp; <span style="color:rgba(59,130,246,0.6)">파란 영역</span> = 본원통화 (우측 축)
-        </div>""", unsafe_allow_html=True)
-
-with tab2:
-    fig2 = go.Figure()
-    fig2.add_trace(go.Scatter(x=dff.index, y=dff["Liquidity_norm"], name="유동성 (정규화)",
-        fill="tozeroy", fillcolor=C["liq_fill"], line=dict(color=C["liq"], width=2.5),
-        hovertemplate="%{y:.1f}<extra>유동성</extra>"))
-    fig2.add_trace(go.Scatter(x=dff.index, y=dff["SP500_norm"], name="S&P 500 (정규화)",
-        line=dict(color=C["sp"], width=2.5), hovertemplate="%{y:.1f}<extra>S&P 500</extra>"))
-    if show_events: add_events_to_fig(fig2, dff)
-    add_recession(fig2, dff)
-    fig2.update_layout(**BASE_LAYOUT, height=500, showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=12), bgcolor="rgba(0,0,0,0)"),
-        yaxis=ax(dict(title_text="정규화 (0–100)")), xaxis=ax())
-    st.plotly_chart(fig2, use_container_width=True, config={"scrollZoom": True, "displayModeBar": False})
-    st.markdown("""<div class="guide-box">
-        💡 <strong>읽는 법:</strong> 두 데이터를 0–100 같은 척도로 맞춰 <strong>방향성</strong>을 직접 비교합니다.
-        두 선이 함께 오르면 유동성이 주가를 견인하는 구간, 괴리가 벌어지면 다른 요인이 지배하는 구간입니다.
-    </div>""", unsafe_allow_html=True)
-
-with tab3:
-    fig3 = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.06, row_heights=[0.5, 0.5])
-    fig3.add_trace(go.Scatter(x=dff.index, y=dff["Liquidity_norm"], name="유동성",
-        line=dict(color=C["liq"], width=2)), row=1, col=1)
-    fig3.add_trace(go.Scatter(x=dff.index, y=dff["SP500_norm"], name="S&P 500",
-        line=dict(color=C["sp"], width=2)), row=1, col=1)
-    corr_s = dff["Corr_90d"].dropna()
-    colors = [C["corr_pos"] if v >= 0 else C["corr_neg"] for v in corr_s]
-    fig3.add_trace(go.Bar(x=corr_s.index, y=corr_s, name="상관계수",
-        marker_color=colors, opacity=0.65, hovertemplate="%{y:.3f}<extra></extra>"), row=2, col=1)
-    fig3.add_hline(y=0.5, line_dash="dash", line_color="rgba(16,185,129,0.3)", row=2, col=1)
-    fig3.add_hline(y=-0.5, line_dash="dash", line_color="rgba(239,68,68,0.3)", row=2, col=1)
-    fig3.add_hline(y=0, line_color="rgba(148,163,184,0.2)", row=2, col=1)
-    if show_events: add_events_to_fig(fig3, dff, True)
-    add_recession(fig3, dff, True)
-    fig3.update_layout(**BASE_LAYOUT, height=620, showlegend=True, bargap=0,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=11), bgcolor="rgba(0,0,0,0)"))
-    fig3.update_xaxes(ax(), row=1, col=1)
-    fig3.update_xaxes(ax(), row=2, col=1)
-    fig3.update_yaxes(ax(dict(title_text="정규화 (0–100)")), row=1, col=1)
-    fig3.update_yaxes(ax(dict(title_text="상관계수", range=[-1, 1])), row=2, col=1)
-    st.plotly_chart(fig3, use_container_width=True, config={"scrollZoom": True, "displayModeBar": False})
-    avg_corr = corr_s.mean()
-    pos_pct = (corr_s > 0).sum() / max(len(corr_s), 1) * 100
+# 최근 캔들 요약
+if len(ohlc_chart) >= 2:
+    last = ohlc_chart.iloc[-1]
+    prev = ohlc_chart.iloc[-2]
+    chg = (last["Close"] - prev["Close"]) / prev["Close"] * 100
+    chg_cls = "up" if chg >= 0 else "down"
+    chg_arrow = "▲" if chg >= 0 else "▼"
     st.markdown(f"""<div class="guide-box">
-        📊 <strong>{period} 상관관계 요약:</strong>
-        평균 상관계수 <strong>{avg_corr:.3f}</strong> · 양의 상관 기간 <strong>{pos_pct:.0f}%</strong> ·
-        {'유동성과 주가가 대체로 동행하여, 유동성 변화가 주가 방향의 좋은 힌트가 됩니다.' if avg_corr > 0.3
-         else '유동성-주가 동조성이 약한 시기로, 금리·실적·지정학 등 다면적 분석이 필요합니다.'}
+        🕯️ <strong>최근 {tf}:</strong>
+        시가 <strong>{last['Open']:,.0f}</strong> · 고가 <strong>{last['High']:,.0f}</strong> ·
+        저가 <strong>{last['Low']:,.0f}</strong> · 종가 <strong>{last['Close']:,.0f}</strong>
+        &nbsp;(<span style="color:var(--accent-{'green' if chg>=0 else 'red'})">{chg_arrow} {chg:+.2f}%</span>)
+        &nbsp;|&nbsp; 이평선: <span style="color:#f59e0b">MA20</span> ·
+        <span style="color:#3b82f6">MA60</span> · <span style="color:#8b5cf6">MA120</span>
+        &nbsp;|&nbsp; <span style="color:rgba(59,130,246,0.6)">파란 영역</span> = 본원통화 (우측 축)
     </div>""", unsafe_allow_html=True)
-
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 이벤트 타임라인
