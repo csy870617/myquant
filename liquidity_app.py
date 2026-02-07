@@ -41,7 +41,7 @@ st.markdown(
 )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# CSS (모바일 최적화 강화 + 툴바 위치 변경)
+# CSS (모바일 최적화 및 너비 조정)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 st.markdown("""
 <style>
@@ -204,16 +204,18 @@ footer { display: none !important; }
     /* 새로고침 바 */
     .refresh-bar { font-size: 0.68rem; padding: 5px 10px; gap: 4px; }
 
-    /* 컨트롤 바: 5개 → 2줄 래핑 (3+2) */
+    /* 컨트롤 바: 비율 1:1:1:1:1 조정에 맞춰 래핑 처리 */
     [data-testid="stHorizontalBlock"] {
         flex-wrap: wrap !important;
         gap: 0.3rem !important;
     }
+    /* 모바일에서는 컬럼들이 좁아지므로 적절히 래핑 */
     [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
-        flex: 0 0 30% !important;
-        min-width: 30% !important;
-        max-width: 48% !important;
+        flex: 0 0 48% !important; /* 2열 배치 유도 */
+        min-width: 45% !important;
+        max-width: 50% !important;
     }
+    
     .stSelectbox { margin-bottom: -0.3rem !important; }
     .stRadio { margin-bottom: -0.3rem !important; }
     .stSelectbox > div > div { min-height: 34px !important; font-size: 0.82rem !important; }
@@ -234,11 +236,11 @@ footer { display: none !important; }
     .report-body { font-size: 0.82rem; line-height: 1.7; }
     .report-signal { font-size: 0.73rem; padding: 4px 10px; }
 
-    /* ★ 차트 풀 블리드 (Full Bleed) */
+    /* ★ 차트 너비: Daily Brief 박스와 동일하게 (음수 마진 제거) */
     [data-testid="stPlotlyChart"] {
-        margin-left: -0.4rem !important;
-        margin-right: -0.4rem !important;
-        width: calc(100% + 0.8rem) !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        width: 100% !important;
     }
 
     /* 가이드 박스 */
@@ -280,11 +282,11 @@ footer { display: none !important; }
     .report-title { font-size: 0.88rem; }
     .report-body { font-size: 0.78rem; line-height: 1.6; }
 
-    /* 차트 극단적 확장 */
+    /* 차트 너비 초기화 (여백 준수) */
     [data-testid="stPlotlyChart"] {
-        margin-left: -0.2rem !important;
-        margin-right: -0.2rem !important;
-        width: calc(100% + 0.4rem) !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        width: 100% !important;
     }
 
     .tl-date { min-width: 60px; font-size: 0.62rem; }
@@ -584,7 +586,8 @@ st.write("") # 간격
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 통합 컨트롤 바 (국가 · 지수 · 기간 · 봉주기 · 이벤트)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-ctrl1, ctrl2, ctrl3, ctrl4, ctrl5 = st.columns([1.1, 1.1, 1.1, 1.8, 0.7])
+# ★ 수정: 5개 컬럼의 비율을 1:1:1:1:1로 조정
+ctrl1, ctrl2, ctrl3, ctrl4, ctrl5 = st.columns([1, 1, 1, 1, 1])
 with ctrl1:
     country = st.selectbox("🌍 국가", list(COUNTRY_CONFIG.keys()), index=0)
 CC = COUNTRY_CONFIG[country]
@@ -600,7 +603,6 @@ with ctrl2:
     idx_ticker = IDX_OPTIONS[idx_name]
 with ctrl3:
     period = st.selectbox("📅 기간", ["3년", "5년", "7년", "10년", "전체"], index=3)
-# ★ 수정: 봉 선택을 Selectbox로 변경
 with ctrl4:
     tf = st.selectbox("🕯️ 봉", ["일봉", "주봉", "월봉"], index=2, key="candle_tf")
 with ctrl5:
