@@ -184,22 +184,22 @@ COUNTRY_CONFIG = {
     "🇺🇸 미국": {
         "indices": {"NASDAQ": "^IXIC", "S&P 500": "^GSPC", "다우존스": "^DJI"},
         "default_idx": 1,
-        "liq_source": "NET_LIQUIDITY", # Net Liquidity 모드
+        "liq_source": "NET_LIQUIDITY",
         "liq_label": "Net Liquidity",
         "liq_unit": "$B",
         "liq_prefix": "$",
-        "liq_suffix": "B", # ★ 추가됨
+        "liq_suffix": "B", 
         "events": MARKET_PIVOTS,
         "data_src": "FRED (WALCL, WTREGEN, RRP) · Yahoo Finance",
     },
     "🇰🇷 대한민국": {
         "indices": {"KOSPI": "^KS11", "KOSDAQ": "^KQ11"},
         "default_idx": 0,
-        "liq_source": "NET_LIQUIDITY", # 한국도 글로벌 유동성(Fed) 영향 받음
+        "liq_source": "NET_LIQUIDITY", 
         "liq_label": "Fed Net Liquidity",
         "liq_unit": "$B",
         "liq_prefix": "$",
-        "liq_suffix": "B", # ★ 추가됨
+        "liq_suffix": "B",
         "events": MARKET_PIVOTS_KR,
         "data_src": "FRED (Global Liquidity) · Yahoo Finance (KRX)",
     },
@@ -212,19 +212,13 @@ def load_data(ticker, country_code):
         fetch_start = end_dt - timedelta(days=365 * 10)
 
         # [A] FRED 데이터 (Net Liquidity Components)
-        # WALCL: Fed Total Assets
-        # WTREGEN: Treasury General Account (TGA)
-        # RRPONTSYD: Reverse Repo (RRP)
         try:
             fred_codes = ["WALCL", "WTREGEN", "RRPONTSYD", "USREC"]
             fred_df = web.DataReader(fred_codes, "fred", fetch_start, end_dt).ffill()
             fred_df.columns = ["Assets", "TGA", "RRP", "Recession"]
             
             # Net Liquidity = Assets - TGA - RRP
-            # FRED 데이터 단위는 모두 Millions of USD
             fred_df["Net_Liquidity"] = fred_df["Assets"] - fred_df["TGA"] - fred_df["RRP"]
-            
-            # Billions 단위로 변환
             fred_df["Liquidity"] = fred_df["Net_Liquidity"] / 1000 
             
         except Exception as e:
@@ -264,7 +258,6 @@ def load_data(ticker, country_code):
         df["Corr_90d"] = df["Liquidity"].rolling(90).corr(df["SP500"])
         
         # [D] Fair Value Model (Linear Regression using Numpy)
-        # sklearn 대신 numpy.polyfit 사용 (의존성 제거 및 최적화)
         reg_window = 252
         if len(df) > reg_window:
             recent_df = df.iloc[-reg_window:]
@@ -491,28 +484,20 @@ with kpi_container:
     """, unsafe_allow_html=True)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 9. AI Strategy Report (Enhanced Logic)
+# 9. AI Strategy Report (Enhanced Logic + HTML Render Fix)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 with brief_container:
     # ── [A] 데이터 분석 (Concrete Data Analysis) ──
-    # 1. 유동성 구성요소 변화 분석 (Why is liquidity changing?)
-    # 최근 2주간 변화량 계산
     delta_days = 10
     if len(df) > delta_days:
         past = df.iloc[-delta_days]
-        
-        # Assets change
         assets_chg = (latest["Assets"] - past["Assets"])
         assets_desc = "증가" if assets_chg > 0 else "감소"
-        
-        # TGA change (TGA 증가는 유동성 감소 요인)
         tga_chg = (latest["TGA"] - past["TGA"])
-        
-        # RRP change (RRP 증가는 유동성 감소 요인)
         rrp_chg = (latest["RRP"] - past["RRP"])
         
         liq_driver_text = []
-        if abs(assets_chg) > 10000: # 의미있는 변화가 있을 때만 언급
+        if abs(assets_chg) > 10000:
             liq_driver_text.append(f"연준 자산이 {assets_desc}하며 유동성에 영향을 주었습니다.")
         if tga_chg > 20000:
             liq_driver_text.append(f"재무부 계좌(TGA) 잔고가 증가하여 시중 유동성을 흡수했습니다(Liquidity Drain).")
@@ -527,7 +512,6 @@ with brief_container:
     else:
         liq_comment = "데이터 분석을 위한 충분한 기간이 확보되지 않았습니다."
 
-    # 2. 시장 국면 진단 (Regime Detection)
     liq_trend_slope = (latest["Liq_MA"] - df.iloc[-20]["Liq_MA"]) if len(df) > 20 else 0
     sp_trend_slope = (latest["SP_MA"] - df.iloc[-20]["SP_MA"]) if len(df) > 20 else 0
 
@@ -552,8 +536,6 @@ with brief_container:
         regime_desc = "뚜렷한 추세가 관찰되지 않는 구간입니다."
         badge_cls = "sig-neu"
 
-    # ── [B] UI 렌더링 (HTML 렌더링 강제 적용) ──
-    # 중요: TGA/RRP 변동폭 비교 로직 안전 처리
     try:
         if len(df) > delta_days:
             main_driver = 'TGA(재무부 계좌)' if abs(tga_chg) > abs(rrp_chg) else 'RRP(역레포)'
@@ -609,7 +591,7 @@ with brief_container:
     </div>
     """
     
-    # ★ 핵심 수정: unsafe_allow_html=True를 반드시 포함해야 함
+    # ★ 수정: HTML 렌더링을 위해 unsafe_allow_html=True 사용
     st.markdown(html_content, unsafe_allow_html=True)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
