@@ -41,7 +41,7 @@ st.markdown(
 )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# CSS (가독성 중심 여백 조정)
+# CSS (툴바 오버레이 & 여백 최적화)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 st.markdown("""
 <style>
@@ -60,7 +60,7 @@ html, body, [data-testid="stAppViewContainer"] {
 }
 [data-testid="stHeader"] { background: transparent !important; }
 
-/* 기본 컨테이너 여백: 너무 꽉 차지 않게 적절한 여백 유지 */
+/* 기본 컨테이너 여백 */
 .block-container { 
     padding-top: 1.5rem !important;
     padding-bottom: 3rem !important;
@@ -179,33 +179,37 @@ footer { display: none !important; }
     touch-action: none !important;
     -webkit-touch-callout: none;
 }
-/* 차트 스타일: 기본 패딩 사용 (강제 확장 제거) */
 [data-testid="stPlotlyChart"] {
     width: 100% !important;
 }
 
-/* 툴바 우측 하단 고정 */
+/* ★ 툴바(Modebar) 오버레이: 차트 우측 하단 내부에 배치 */
 .modebar { 
-    opacity: 0.7 !important; 
-    top: auto !important;     
-    bottom: 0 !important;     
-    right: 0 !important;      
+    opacity: 0.2 !important; /* 평소엔 아주 희미하게 */
+    position: absolute !important;
+    bottom: 5px !important;     
+    right: 5px !important;      
+    top: auto !important;
     left: auto !important;    
+    background: rgba(255, 255, 255, 0.6) !important; /* 배경 반투명 */
+    border-radius: 4px;
+    padding: 2px !important;
+    z-index: 1000 !important;
 }
-.modebar:hover { opacity: 1 !important; }
-.modebar-btn { font-size: 16px !important; }
+.modebar:hover { opacity: 1 !important; background: rgba(255, 255, 255, 0.95) !important; }
+.modebar-btn { font-size: 14px !important; }
 .modebar-group { padding: 0 2px !important; }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    모바일 반응형 (≤768px)
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 @media (max-width: 768px) {
-    /* 레이아웃: 가독성 좋은 패딩 확보 (너무 꽉 차지 않게) */
+    /* 레이아웃: 가독성 좋은 패딩 확보 */
     .block-container {
         padding-top: 1rem !important;
         padding-bottom: 2rem !important;
-        padding-left: 1rem !important;  /* ★ 좌우 여백 1rem 확보 */
-        padding-right: 1rem !important; /* ★ 좌우 여백 1rem 확보 */
+        padding-left: 1rem !important;  
+        padding-right: 1rem !important; 
     }
 
     /* 헤더 축소 */
@@ -266,15 +270,15 @@ footer { display: none !important; }
     /* 푸터 */
     .app-footer { font-size: 0.68rem; padding: 0.8rem 0.5rem; }
 
-    /* Plotly 모드바 모바일 */
-    .modebar { opacity: 1 !important; }
-    .modebar-btn { font-size: 18px !important; padding: 4px !important; }
+    /* Plotly 모드바 모바일: 터치하기 좋게 */
+    .modebar { opacity: 0.6 !important; bottom: 2px !important; right: 2px !important; }
+    .modebar-btn { font-size: 18px !important; padding: 6px !important; }
 }
 
 /* ━━ 초소형 화면 (≤480px) ━━ */
 @media (max-width: 480px) {
     .block-container { 
-        padding-left: 0.6rem !important; /* 초소형에서도 최소 여백 확보 */
+        padding-left: 0.6rem !important; 
         padding-right: 0.6rem !important;
     }
     .page-header-icon { width: 32px; height: 32px; font-size: 1rem; }
@@ -507,8 +511,8 @@ BASE_LAYOUT = dict(
     font=dict(family="Pretendard, sans-serif", color="#475569", size=12),
     hovermode="x unified",
     hoverlabel=dict(bgcolor="white", bordercolor="#e2e8f0", font=dict(color="#1e293b", size=12)),
-    # ★ 수정: 좌우 여백 다시 확보 (가독성)
-    margin=dict(t=50, b=30, l=40, r=40), dragmode="pan",
+    # ★ 수정: 오른쪽 여백(r) 10px로 축소 (빈공간 제거)
+    margin=dict(t=50, b=30, l=40, r=10), dragmode="pan",
 )
 
 def add_events_to_fig(fig, dff, events, has_rows=False, min_gap_days=30):
@@ -878,7 +882,7 @@ fig_candle.update_layout(
 )
 fig_candle.update_xaxes(ax(), row=1, col=1)
 fig_candle.update_xaxes(ax(), row=2, col=1)
-# ★ 수정: 차트 축 라벨 텍스트 제거 (title_text="") + 바깥쪽 배치(outside)
+# ★ 수정: 차트 축 라벨 텍스트 제거 (title=None) + 바깥쪽 배치(outside) + 자동 마진
 fig_candle.update_yaxes(ax(dict(title=None, ticklabelposition="outside", automargin=True)), row=1, col=1, secondary_y=False)
 # 유동성 Y축 범위 계산: 데이터 하한 기반으로 동적 설정
 liq_min_val = liq_series.min()
@@ -886,11 +890,11 @@ liq_max_val = liq_series.max()
 liq_y_min = liq_min_val * 0.85  # 하한 15% 여유
 liq_y_max = liq_y_min + (liq_max_val - liq_y_min) / 0.6  # 변동 시각화 확대
 
-# ★ 수정: 차트 축 라벨 텍스트 제거 (title_text="") + 바깥쪽 배치(outside)
+# ★ 수정: 차트 축 라벨 텍스트 제거 (title=None) + 바깥쪽 배치(outside) + 자동 마진
 fig_candle.update_yaxes(ax(dict(title=None,
     title_font=dict(color="#3b82f6"), tickfont=dict(color="#3b82f6", size=10),
     showgrid=False, range=[liq_y_min, liq_y_max], ticklabelposition="outside", automargin=True)), row=1, col=1, secondary_y=True)
-# ★ 수정: 차트 축 라벨 텍스트 제거 (title_text="") + 바깥쪽 배치(outside)
+# ★ 수정: 차트 축 라벨 텍스트 제거 (title=None) + 바깥쪽 배치(outside) + 자동 마진
 fig_candle.update_yaxes(ax(dict(title=None, tickformat=".2s", fixedrange=True, ticklabelposition="outside", automargin=True)), row=2, col=1)
 
 st.plotly_chart(fig_candle, use_container_width=True,
