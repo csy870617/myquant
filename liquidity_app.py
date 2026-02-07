@@ -41,7 +41,7 @@ st.markdown(
 )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# CSS (툴바 위치 상단 이동 및 여백 조정)
+# CSS (모바일 핀치 줌 활성화 & 툴바 오버레이)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 st.markdown("""
 <style>
@@ -176,6 +176,7 @@ footer { display: none !important; }
 .js-plotly-plot, .plotly, .js-plotly-plot .plotly,
 [data-testid="stPlotlyChart"], [data-testid="stPlotlyChart"] > div,
 .stPlotlyChart, .stPlotlyChart > div > div > div {
+    /* ★ 모바일 터치 액션 제어 (중요: 차트 위에서 스크롤 방지) */
     touch-action: none !important;
     -webkit-touch-callout: none;
 }
@@ -868,12 +869,17 @@ if show_events:
 # 리세션 음영
 add_recession(fig_candle, dff, True)
 
-# ★ 수정: 범례(Legend) 왼쪽으로 이동, 상단 마진 확보
+# ★ 수정: 범례를 차트 안쪽 좌측 상단으로 이동, 배경 추가
 fig_candle.update_layout(
     **BASE_LAYOUT, height=700, showlegend=True,
-    legend=dict(orientation="h", yanchor="bottom", y=1.02,
-                xanchor="left", x=0, font=dict(size=11),
-                bgcolor="rgba(0,0,0,0)"),
+    legend=dict(
+        yanchor="top", y=0.99,
+        xanchor="left", x=0.01,
+        font=dict(size=11),
+        bgcolor="rgba(255,255,255,0.5)", # 반투명 배경
+        bordercolor="rgba(0,0,0,0.1)",
+        borderwidth=1
+    ),
     xaxis_rangeslider_visible=False,
 )
 fig_candle.update_xaxes(ax(), row=1, col=1)
