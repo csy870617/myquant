@@ -614,9 +614,13 @@ if show_events:
 add_recession(fig, dff, True)
 
 # (7) 레이아웃 설정
+# x축 좌우 제한 (데이터 범위만큼만)
+x_min = ohlc_chart.index.min()
+x_max = ohlc_chart.index.max() + timedelta(days=1)
+
 layout_opts = dict(
     plot_bgcolor="white", paper_bgcolor="white",
-    margin=dict(t=60, b=20, l=10, r=50), # 상단 여백(t=60) 확보 (이벤트 텍스트용)
+    margin=dict(t=60, b=20, l=10, r=50), # 상단 여백(t=60) 확보
     height=600,
     hovermode="x unified",
     dragmode="pan",
@@ -628,30 +632,40 @@ layout_opts = dict(
     xaxis_rangeslider_visible=False,
 )
 
-# ★ 핵심: 주말 Gap 제거 (rangebreaks)
-if tf == "일봉":
-    rangebreaks = [dict(bounds=["sat", "mon"])] 
-    layout_opts["xaxis"] = dict(rangebreaks=rangebreaks)
-
+# ★ 핵심: Y축 고정(fixedrange=True) + X축 제한
 fig.update_layout(**layout_opts)
 
 # 축 설정
-fig.update_xaxes(gridcolor="#f5f5f5", showgrid=True, row=1, col=1)
-fig.update_xaxes(gridcolor="#f5f5f5", showgrid=True, row=2, col=1)
+# X축: 좌우 제한 설정 (minallowed, maxallowed)
+fig.update_xaxes(
+    gridcolor="#f5f5f5", showgrid=True, 
+    minallowed=x_min, maxallowed=x_max,
+    row=1, col=1
+)
+fig.update_xaxes(
+    gridcolor="#f5f5f5", showgrid=True, 
+    minallowed=x_min, maxallowed=x_max,
+    row=2, col=1
+)
 
-# Y축 (오른쪽 배치 - 네이버 스타일)
+# 주말 Gap 제거 (일봉일 때)
+if tf == "일봉":
+    rangebreaks = [dict(bounds=["sat", "mon"])]
+    fig.update_xaxes(rangebreaks=rangebreaks, row=1, col=1)
+    fig.update_xaxes(rangebreaks=rangebreaks, row=2, col=1)
+
+# Y축: 상하 이동 잠금 (fixedrange=True)
 fig.update_yaxes(
     side="right", 
     gridcolor="#f5f5f5", showgrid=True,
     tickfont=dict(color="#333", size=11),
     ticklabelposition="outside", 
     zeroline=False,
+    fixedrange=True, # ★ Y축 고정
     row=1, col=1, secondary_y=False
 )
-# 유동성 축 (왼쪽, 숨김)
-fig.update_yaxes(visible=False, row=1, col=1, secondary_y=True)
-# 거래량 축 (오른쪽, 간소화)
-fig.update_yaxes(side="right", showgrid=False, tickformat=".2s", row=2, col=1)
+fig.update_yaxes(visible=False, fixedrange=True, row=1, col=1, secondary_y=True)
+fig.update_yaxes(side="right", showgrid=False, tickformat=".2s", fixedrange=True, row=2, col=1)
 
 # Config
 config = {
