@@ -6,7 +6,6 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import numpy as np
 from zoneinfo import ZoneInfo
-from sklearn.linear_model import LinearRegression
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 1. 페이지 설정 및 로고
@@ -262,20 +261,26 @@ def load_data(ticker, country_code):
         # 상관계수 (90일 Rolling)
         df["Corr_90d"] = df["Liquidity"].rolling(90).corr(df["SP500"])
         
-        # [D] Fair Value Model (Linear Regression on last 1 year)
-        # 최근 1년 데이터로 회귀분석하여 '적정 주가' 추정
+        # [D] Fair Value Model (Linear Regression using Numpy)
+        # sklearn 대신 numpy.polyfit 사용 (의존성 제거 및 최적화)
         reg_window = 252
         if len(df) > reg_window:
             recent_df = df.iloc[-reg_window:]
-            X = recent_df["Liquidity"].values.reshape(-1, 1)
-            y = recent_df["SP500"].values
-            model = LinearRegression()
-            model.fit(X, y)
-            df["Fair_Value"] = model.predict(df["Liquidity"].values.reshape(-1, 1))
+            x_vals = recent_df["Liquidity"].values
+            y_vals = recent_df["SP500"].values
+            
+            # 1차 회귀분석 (Linear Regression)
+            coef = np.polyfit(x_vals, y_vals, 1)
+            poly1d_fn = np.poly1d(coef)
+            
+            df["Fair_Value"] = poly1d_fn(df["Liquidity"])
             df["Valuation_Gap"] = (df["SP500"] - df["Fair_Value"]) / df["Fair_Value"] * 100
             
-            # R-Squared (결정계수)
-            df["R_Squared"] = model.score(X, y)
+            # R-Squared 계산
+            y_pred = poly1d_fn(x_vals)
+            ss_res = np.sum((y_vals - y_pred) ** 2)
+            ss_tot = np.sum((y_vals - np.mean(y_vals)) ** 2)
+            df["R_Squared"] = 1 - (ss_res / ss_tot)
         else:
             df["Fair_Value"] = np.nan
             df["Valuation_Gap"] = 0
@@ -500,11 +505,9 @@ with brief_container:
         
         # TGA change (TGA 증가는 유동성 감소 요인)
         tga_chg = (latest["TGA"] - past["TGA"])
-        tga_impact = "부정적" if tga_chg > 0 else "긍정적"
         
         # RRP change (RRP 증가는 유동성 감소 요인)
         rrp_chg = (latest["RRP"] - past["RRP"])
-        rrp_impact = "부정적" if rrp_chg > 0 else "긍정적"
         
         liq_driver_text = []
         if abs(assets_chg) > 10000: # 의미있는 변화가 있을 때만 언급
