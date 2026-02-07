@@ -167,6 +167,11 @@ footer { display: none !important; }
 .stSelectbox label, .stMultiSelect label, .stSlider label, .stRadio label {
     color: var(--text-secondary)!important; font-weight:600!important; font-size:0.82rem!important;
 }
+/* 컨트롤 바 간격 최소화 */
+[data-testid="stHorizontalBlock"] { gap: 0.5rem !important; }
+.stSelectbox { margin-bottom: -0.6rem !important; }
+.stRadio { margin-bottom: -0.6rem !important; }
+[data-testid="stRadio"] > div { gap: 0.3rem !important; }
 .app-footer { text-align:center; color:var(--text-muted); font-size:0.75rem; margin-top:2rem; padding:1rem; border-top:1px solid var(--border); }
 
 /* ── Plotly 차트 ── */
@@ -186,16 +191,34 @@ footer { display: none !important; }
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 @media (max-width: 768px) {
     /* 레이아웃 */
-    .block-container { padding: 1rem 0.8rem 2rem !important; }
+    .block-container { padding: 1rem 0.6rem 2rem !important; }
 
     /* 헤더 축소 */
     .page-header { gap: 10px; margin-bottom: 0.2rem; }
     .page-header-icon { width: 36px; height: 36px; font-size: 1.1rem; border-radius: 10px; }
     .page-title { font-size: 1.2rem; }
-    .page-desc { font-size: 0.8rem; margin-bottom: 1rem; line-height: 1.5; }
+    .page-desc { font-size: 0.8rem; margin-bottom: 0.8rem; line-height: 1.5; }
 
-    /* 새로고침 바 — 핵심 정보만 */
+    /* 새로고침 바 */
     .refresh-bar { font-size: 0.68rem; padding: 5px 10px; gap: 4px; }
+
+    /* 컨트롤 바: 5개 → 2줄 래핑 (3+2) */
+    [data-testid="stHorizontalBlock"] {
+        flex-wrap: wrap !important;
+        gap: 0.3rem !important;
+    }
+    [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+        flex: 0 0 30% !important;
+        min-width: 30% !important;
+        max-width: 48% !important;
+    }
+    .stSelectbox { margin-bottom: -0.3rem !important; }
+    .stRadio { margin-bottom: -0.3rem !important; }
+    .stSelectbox > div > div { min-height: 34px !important; font-size: 0.82rem !important; }
+    .stSelectbox label, .stMultiSelect label, .stSlider label, .stRadio label {
+        font-size: 0.72rem !important;
+    }
+    [data-testid="stRadio"] label { font-size: 0.78rem !important; padding: 0.2rem 0.4rem !important; }
 
     /* KPI 2열 + 콤팩트 */
     .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 0.8rem; }
@@ -210,18 +233,14 @@ footer { display: none !important; }
     .report-body { font-size: 0.82rem; line-height: 1.7; }
     .report-signal { font-size: 0.73rem; padding: 4px 10px; }
 
-    /* Streamlit 위젯 콤팩트 */
-    .stSelectbox, .stRadio, .stToggle {
-        margin-bottom: -0.5rem !important;
+    /* ★ 차트 넓고 크게 */
+    [data-testid="stPlotlyChart"] {
+        margin-left: -0.6rem !important;
+        margin-right: -0.6rem !important;
+        width: calc(100% + 1.2rem) !important;
     }
-    .stSelectbox label, .stMultiSelect label, .stSlider label, .stRadio label {
-        font-size: 0.72rem !important;
-    }
-    .stSelectbox > div > div { min-height: 34px !important; font-size: 0.82rem !important; }
-    [data-testid="stRadio"] > div { gap: 0.3rem !important; }
-    [data-testid="stRadio"] label { font-size: 0.78rem !important; padding: 0.2rem 0.5rem !important; }
 
-    /* 가이드 박스 줄바꿈 정리 */
+    /* 가이드 박스 */
     .guide-box { padding: 0.7rem 0.9rem; font-size: 0.76rem; line-height: 1.6; }
 
     /* 카드 콤팩트 */
@@ -239,24 +258,31 @@ footer { display: none !important; }
     /* 푸터 */
     .app-footer { font-size: 0.68rem; padding: 0.8rem 0.5rem; }
 
-    /* Plotly 모드바 모바일 최적화 */
+    /* Plotly 모드바 모바일 */
     .modebar { opacity: 1 !important; }
     .modebar-btn { font-size: 18px !important; padding: 4px !important; }
-    .modebar-group { padding: 0 1px !important; }
 }
 
 /* ━━ 초소형 화면 (≤480px) ━━ */
 @media (max-width: 480px) {
-    .block-container { padding: 0.7rem 0.5rem 1.5rem !important; }
+    .block-container { padding: 0.7rem 0.4rem 1.5rem !important; }
     .page-header-icon { width: 32px; height: 32px; font-size: 1rem; }
     .page-title { font-size: 1.05rem; letter-spacing: -0.3px; }
-    .page-desc { font-size: 0.75rem; margin-bottom: 0.8rem; }
+    .page-desc { font-size: 0.75rem; margin-bottom: 0.6rem; }
     .kpi-value { font-size: 0.95rem; }
     .kpi-label { font-size: 0.6rem; letter-spacing: 0.3px; }
     .report-title { font-size: 0.88rem; }
     .report-body { font-size: 0.78rem; line-height: 1.6; }
+
+    /* 차트 풀블리드 */
+    [data-testid="stPlotlyChart"] {
+        margin-left: -0.4rem !important;
+        margin-right: -0.4rem !important;
+        width: calc(100% + 0.8rem) !important;
+    }
+
     .tl-date { min-width: 60px; font-size: 0.62rem; }
-    .tl-desc { display: none; }  /* 초소형에선 설명 숨김 */
+    .tl-desc { display: none; }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -478,7 +504,7 @@ BASE_LAYOUT = dict(
     font=dict(family="Pretendard, sans-serif", color="#475569", size=12),
     hovermode="x unified",
     hoverlabel=dict(bgcolor="white", bordercolor="#e2e8f0", font=dict(color="#1e293b", size=12)),
-    margin=dict(t=60, b=35, l=55, r=20), dragmode="pan",
+    margin=dict(t=50, b=30, l=45, r=15), dragmode="pan",
 )
 
 def add_events_to_fig(fig, dff, events, has_rows=False, min_gap_days=30):
@@ -543,13 +569,12 @@ st.markdown(
 )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 국가 선택 & 데이터 로드
+# 통합 컨트롤 바 (국가 · 지수 · 기간 · 봉주기 · 이벤트)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-country_col, _ = st.columns([1, 2])
-with country_col:
+ctrl1, ctrl2, ctrl3, ctrl4, ctrl5 = st.columns([1.1, 1.1, 1.1, 1.8, 0.7])
+with ctrl1:
     country = st.selectbox("🌍 국가", list(COUNTRY_CONFIG.keys()), index=0)
-
-CC = COUNTRY_CONFIG[country]  # 현재 국가 설정
+CC = COUNTRY_CONFIG[country]
 IDX_OPTIONS = CC["indices"]
 
 # 국가 변경 시 지수 키 초기화
@@ -557,11 +582,19 @@ if st.session_state.get("_prev_country") != country:
     st.session_state["_prev_country"] = country
     st.session_state["idx_select"] = list(IDX_OPTIONS.keys())[CC["default_idx"]]
 
-# 위젯 키에서 현재 선택된 지수 읽기 (selectbox rerun 시 자동 반영)
-idx_name = st.session_state.get("idx_select", list(IDX_OPTIONS.keys())[CC["default_idx"]])
-if idx_name not in IDX_OPTIONS:
-    idx_name = list(IDX_OPTIONS.keys())[0]
-idx_ticker = IDX_OPTIONS[idx_name]
+with ctrl2:
+    idx_name = st.selectbox("📈 지수", list(IDX_OPTIONS.keys()), key="idx_select")
+    idx_ticker = IDX_OPTIONS[idx_name]
+with ctrl3:
+    period = st.selectbox("📅 기간", ["3년", "5년", "7년", "10년", "전체"], index=3)
+with ctrl4:
+    tf = st.radio("🕯️ 봉", ["일봉", "주봉", "월봉"], horizontal=True, key="candle_tf", index=2)
+with ctrl5:
+    show_events = st.toggle("📌 이벤트", value=True)
+
+period_map = {"3년": 3, "5년": 5, "7년": 7, "10년": 10, "전체": 12}
+period_years = period_map[period]
+cutoff = datetime.now() - timedelta(days=365 * period_years)
 
 with st.spinner(f"{CC['liq_label']} & {idx_name} 데이터를 불러오는 중..."):
     df, ohlc_raw = load_data(idx_ticker, CC["fred_liq"], CC["fred_rec"], CC["liq_divisor"])
@@ -729,30 +762,9 @@ st.markdown(
 )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 차트 컨트롤 (2행: 셀렉트 + 라디오/토글)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-c1, c2 = st.columns(2)
-with c1:
-    idx_name = st.selectbox("📈 지수", list(IDX_OPTIONS.keys()), key="idx_select")
-    idx_ticker = IDX_OPTIONS[idx_name]
-with c2:
-    period = st.selectbox("📅 분석 기간", ["3년", "5년", "7년", "10년", "전체"], index=3)
-
-c3, c4 = st.columns([3, 1])
-with c3:
-    tf = st.radio("🕯️ 봉 주기", ["일봉", "주봉", "월봉"], horizontal=True, key="candle_tf", index=2)
-with c4:
-    show_events = st.toggle("📌 이벤트", value=True)
-
-period_map = {"3년": 3, "5년": 5, "7년": 7, "10년": 10, "전체": 12}
-period_years = period_map[period]
-cutoff = datetime.now() - timedelta(days=365 * period_years)
-dff = df[df.index >= pd.to_datetime(cutoff)].copy()
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 차트
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+dff = df[df.index >= pd.to_datetime(cutoff)].copy()
 
 # ── 캔들스틱 OHLC 리샘플 헬퍼 ──
 def resample_ohlc(ohlc_df, rule):
@@ -845,7 +857,7 @@ if show_events:
 add_recession(fig_candle, dff, True)
 
 fig_candle.update_layout(
-    **BASE_LAYOUT, height=620, showlegend=True,
+    **BASE_LAYOUT, height=700, showlegend=True,
     legend=dict(orientation="h", yanchor="bottom", y=1.02,
                 xanchor="center", x=0.5, font=dict(size=11),
                 bgcolor="rgba(0,0,0,0)"),
