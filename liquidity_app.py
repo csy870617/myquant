@@ -18,10 +18,6 @@ st.set_page_config(page_title="유동성 × 시장 분석기", page_icon="📊",
 def get_next_refresh():
     """다음 새로고침 시각까지 남은 초 계산 (PST 09/18 + KST 09/18)"""
     utc_now = datetime.now(ZoneInfo("UTC"))
-
-    # PST (UTC-8) 09:00, 18:00 → UTC 17:00, 02:00(+1)
-    # KST (UTC+9) 09:00, 18:00 → UTC 00:00, 09:00
-    # UTC 기준 정렬: 00:00, 02:00, 09:00, 17:00
     utc_hours = [0, 2, 9, 17]
 
     targets = []
@@ -33,15 +29,11 @@ def get_next_refresh():
 
     next_t = min(targets)
     secs = max(int((next_t - utc_now).total_seconds()), 60)
-
-    # 표시용: 로컬 시간으로 변환
     local_next = next_t.astimezone(ZoneInfo("Asia/Seoul"))
     return local_next, secs
 
 NEXT_REFRESH_TIME, REFRESH_SECS = get_next_refresh()
 
-# 자동 새로고침 메타 태그 (밀리초 단위)
-# 최대 1시간 단위로 체크, 정시에 가까워지면 짧아짐
 auto_interval = min(REFRESH_SECS * 1000, 3600_000)
 st.markdown(
     f'<meta http-equiv="refresh" content="{min(REFRESH_SECS, 3600)}">',
@@ -49,7 +41,7 @@ st.markdown(
 )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# CSS
+# CSS (모바일 최적화 강화)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 st.markdown("""
 <style>
@@ -170,10 +162,6 @@ footer { display: none !important; }
 [data-testid="stHorizontalBlock"] { gap: 0.5rem !important; }
 .stSelectbox { margin-bottom: -0.6rem !important; }
 .stRadio { margin-bottom: -0.6rem !important; }
-[data-testid="stRadio"] > div { 
-    gap: 0.3rem !important; 
-    flex-direction: row !important; /* ★ 모바일에서도 가로 배치 강제 */
-}
 .app-footer { text-align:center; color:var(--text-muted); font-size:0.75rem; margin-top:2rem; padding:1rem; border-top:1px solid var(--border); }
 
 /* ── Plotly 차트 ── */
@@ -192,8 +180,13 @@ footer { display: none !important; }
    모바일 반응형 (≤768px)
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 @media (max-width: 768px) {
-    /* 레이아웃 */
-    .block-container { padding: 1rem 0.6rem 2rem !important; }
+    /* 레이아웃: 패딩 최소화로 화면 공간 확보 */
+    .block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 2rem !important;
+        padding-left: 0.4rem !important;  /* 좌우 패딩 줄임 */
+        padding-right: 0.4rem !important; /* 좌우 패딩 줄임 */
+    }
 
     /* 헤더 축소 */
     .page-header { gap: 10px; margin-bottom: 0.2rem; }
@@ -220,7 +213,22 @@ footer { display: none !important; }
     .stSelectbox label, .stMultiSelect label, .stSlider label, .stRadio label {
         font-size: 0.72rem !important;
     }
-    [data-testid="stRadio"] label { font-size: 0.78rem !important; padding: 0.2rem 0.4rem !important; }
+    
+    /* ★ 라디오 버튼 강제 가로 배치 (중요) */
+    [data-testid="stRadio"] > div[role="radiogroup"] {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        overflow-x: auto !important;
+        gap: 6px !important;
+    }
+    [data-testid="stRadio"] label {
+        font-size: 0.75rem !important;
+        padding-right: 10px !important;
+        padding-left: 4px !important;
+        margin-right: 0 !important;
+        white-space: nowrap !important;
+    }
 
     /* KPI 2열 + 콤팩트 */
     .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 0.8rem; }
@@ -235,11 +243,11 @@ footer { display: none !important; }
     .report-body { font-size: 0.82rem; line-height: 1.7; }
     .report-signal { font-size: 0.73rem; padding: 4px 10px; }
 
-    /* ★ 차트 넓고 크게 */
+    /* ★ 차트 풀 블리드 (Full Bleed) - 화면 꽉 차게 */
     [data-testid="stPlotlyChart"] {
-        margin-left: -0.6rem !important;
-        margin-right: -0.6rem !important;
-        width: calc(100% + 1.2rem) !important;
+        margin-left: -0.4rem !important;  /* 컨테이너 패딩만큼 음수 마진 */
+        margin-right: -0.4rem !important; /* 컨테이너 패딩만큼 음수 마진 */
+        width: calc(100% + 0.8rem) !important;
     }
 
     /* 가이드 박스 */
@@ -267,7 +275,12 @@ footer { display: none !important; }
 
 /* ━━ 초소형 화면 (≤480px) ━━ */
 @media (max-width: 480px) {
-    .block-container { padding: 0.7rem 0.4rem 1.5rem !important; }
+    /* 레이아웃 더 타이트하게 */
+    .block-container { 
+        padding-left: 0.2rem !important;
+        padding-right: 0.2rem !important;
+    }
+
     .page-header-icon { width: 32px; height: 32px; font-size: 1rem; }
     .page-title { font-size: 1.05rem; letter-spacing: -0.3px; }
     .page-desc { font-size: 0.75rem; margin-bottom: 0.6rem; }
@@ -276,11 +289,11 @@ footer { display: none !important; }
     .report-title { font-size: 0.88rem; }
     .report-body { font-size: 0.78rem; line-height: 1.6; }
 
-    /* 차트 풀블리드 */
+    /* 차트 극단적 확장 */
     [data-testid="stPlotlyChart"] {
-        margin-left: -0.4rem !important;
-        margin-right: -0.4rem !important;
-        width: calc(100% + 0.8rem) !important;
+        margin-left: -0.2rem !important;
+        margin-right: -0.2rem !important;
+        width: calc(100% + 0.4rem) !important;
     }
 
     .tl-date { min-width: 60px; font-size: 0.62rem; }
