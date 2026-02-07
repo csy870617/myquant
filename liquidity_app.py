@@ -13,408 +13,515 @@ import yfinance as yf
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 st.set_page_config(
     page_title="유동성 × 시장 분석기", 
-    page_icon="📈", 
+    page_icon="icon.png", 
     layout="wide"
 )
 
+# 상단 로고 (파일이 있으면 표시)
+try:
+    st.logo("icon.png")
+except:
+    pass
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 2. 스타일 (네이버 증권 모바일/웹 스타일)
+# 2. 스타일 (네이버 증권 + KPI/리포트 스타일)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800;900&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&display=swap');
 
 :root {
-    --bg-color: #ffffff;
-    --text-main: #222222;
-    --text-sub: #6e7582;
-    --border-color: #e0e0e0;
-    --up-color: #f73646;   /* 상승 빨강 */
-    --down-color: #335eff; /* 하락 파랑 */
-    --accent-color: #3b82f6;
+    --bg: #ffffff;
+    --text-primary: #222222;
+    --text-secondary: #8d929b;
+    --border: #ececec;
+    --up-color: #f73646;
+    --down-color: #335eff;
+    --card-bg: #ffffff;
+    --accent-blue: #3b82f6; --accent-red: #ef4444; --accent-green: #10b981; --accent-purple: #8b5cf6;
 }
 
 html, body, [data-testid="stAppViewContainer"] {
     font-family: 'Pretendard', sans-serif;
-    background-color: var(--bg-color);
-    color: var(--text-main);
+    background: var(--bg) !important; color: var(--text-primary);
 }
+[data-testid="stHeader"] { background: transparent !important; }
 
-/* 컨테이너 여백 최적화 */
-.block-container {
-    padding-top: 1rem !important;
-    padding-bottom: 5rem !important;
-    padding-left: 0.5rem !important;
-    padding-right: 0.5rem !important;
+.block-container { 
+    padding-top: 1rem !important; padding-bottom: 3rem !important;
+    padding-left: 1rem !important; padding-right: 1rem !important;
     max-width: 100%;
 }
 
-/* 헤더 스타일 */
-.stock-header {
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 12px;
-    margin-bottom: 15px;
+/* ── KPI 카드 ── */
+.kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 15px; }
+.kpi {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px;
+    padding: 1rem; position: relative; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.03);
 }
-.header-top { display: flex; align-items: baseline; gap: 8px; }
-.stock-name { font-size: 1.6rem; font-weight: 800; color: #111; }
-.stock-code { font-size: 0.9rem; color: #888; font-weight: 500; }
-.price-row { display: flex; align-items: flex-end; gap: 10px; margin-top: 2px; }
-.current-price { 
-    font-family: 'Roboto Mono', monospace; 
-    font-size: 2.2rem; font-weight: 700; letter-spacing: -1px; line-height: 1; 
-}
-.price-change { font-size: 1.1rem; font-weight: 600; padding-bottom: 4px; }
-.up { color: var(--up-color); }
-.down { color: var(--down-color); }
-.flat { color: #333; }
+.kpi::before { content:''; position:absolute; left:0; top:0; bottom:0; width:4px; }
+.kpi.blue::before { background: var(--accent-blue); }
+.kpi.red::before { background: var(--accent-red); }
+.kpi.green::before { background: var(--accent-green); }
+.kpi.purple::before { background: var(--accent-purple); }
+.kpi-label { font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.3rem; }
+.kpi-value { font-family: 'Roboto Mono', monospace; font-size: 1.3rem; font-weight: 700; color: var(--text-primary); }
+.kpi-delta { font-size: 0.8rem; font-weight: 500; margin-top: 0.2rem; }
+.kpi-delta.up { color: var(--accent-green); }
+.kpi-delta.down { color: var(--accent-red); }
 
-/* KPI 요약 바 */
-.kpi-bar {
-    display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 5px;
-    -ms-overflow-style: none; scrollbar-width: none;
-}
-.kpi-bar::-webkit-scrollbar { display: none; }
-.kpi-item {
-    background: #f8f9fa; padding: 8px 14px; border-radius: 8px; 
-    display: flex; flex-direction: column; min-width: 100px;
-    border: 1px solid #eee;
-}
-.kpi-title { font-size: 0.75rem; color: #666; margin-bottom: 2px; }
-.kpi-val { font-size: 1rem; font-weight: 700; color: #222; font-family: 'Roboto Mono'; }
-.kpi-sub { font-size: 0.75rem; font-weight: 500; }
+/* ── 헤더 (네이버 스타일) ── */
+.stock-header-container { padding-bottom: 15px; border-bottom: 1px solid var(--border); margin-bottom: 15px; }
+.stock-title-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.stock-name { font-size: 1.5rem; font-weight: 800; color: #111; }
+.stock-ticker { font-size: 0.95rem; color: var(--text-secondary); font-weight: 500; }
+.stock-price-row { display: flex; align-items: flex-end; gap: 12px; }
+.stock-price { font-family: 'Roboto Mono', sans-serif; font-size: 2.4rem; font-weight: 700; line-height: 1; }
+.stock-change { font-size: 1.1rem; font-weight: 600; padding-bottom: 4px; }
+.c-up { color: var(--up-color); }
+.c-down { color: var(--down-color); }
+.c-flat { color: #333; }
 
-/* 컨트롤 바 */
-div[data-testid="stHorizontalBlock"] { gap: 0.5rem; }
-.stSelectbox > div > div { background: #f9f9f9; border: 1px solid #ddd; border-radius: 6px; }
-
-/* 리포트 박스 */
-.report-card {
-    background: #fcfcfd; border: 1px solid #e1e4e8; border-radius: 12px;
-    padding: 1.2rem; margin-top: 20px;
+/* ── 리포트 박스 (Daily Brief) ── */
+.report-box {
+    background: linear-gradient(135deg, #f8f9fa, #ffffff); border: 1px solid #e1e4e8;
+    border-radius: 12px; padding: 1.5rem; margin-top: 1.5rem; margin-bottom: 1.5rem;
 }
-.report-title { font-size: 1rem; font-weight: 800; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
-.report-text { font-size: 0.9rem; color: #444; line-height: 1.6; }
-.highlight { background: rgba(59,130,246,0.08); color: var(--accent-color); padding: 0 4px; border-radius: 4px; font-weight: 700; }
+.report-header { display: flex; align-items: center; gap: 10px; margin-bottom: 1rem; }
+.report-badge {
+    background: var(--accent-blue); color: white; font-size: 0.7rem; font-weight: 700;
+    padding: 4px 10px; border-radius: 20px; text-transform: uppercase;
+}
+.report-date { font-size: 0.85rem; color: var(--text-secondary); }
+.report-title { font-size: 1.1rem; font-weight: 700; color: var(--text-primary); }
+.report-body { font-size: 0.95rem; color: #444; line-height: 1.7; }
+.report-body strong { color: #111; font-weight: 700; }
+.report-body .hl { background: rgba(59,130,246,0.1); padding: 0 4px; border-radius: 4px; color: var(--accent-blue); font-weight: 600; }
+.report-divider { border: none; border-top: 1px dashed #d1d5db; margin: 12px 0; }
+.report-signal { display: inline-flex; padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; font-weight: 700; margin-top: 0.8rem; }
+.signal-bullish { background: rgba(16,185,129,0.1); color: var(--accent-green); border: 1px solid rgba(16,185,129,0.2); }
+.signal-neutral { background: rgba(245,158,11,0.1); color: var(--accent-amber); border: 1px solid rgba(245,158,11,0.2); }
+.signal-bearish { background: rgba(239,68,68,0.1); color: var(--accent-red); border: 1px solid rgba(239,68,68,0.2); }
 
-/* 차트 툴바 커스텀 */
-.modebar {
-    opacity: 0.9 !important;
-    top: 0px !important; right: 0px !important;
-    background: rgba(255,255,255,0.8) !important;
-    border-radius: 4px;
+/* ── 타임라인 ── */
+.timeline { display: flex; flex-direction: column; gap: 0; border-top: 1px solid #eee; margin-top: 10px; }
+.tl-item { display: flex; gap: 15px; padding: 12px 0; border-bottom: 1px solid #f5f5f5; font-size: 0.9rem; }
+.tl-date { color: #888; font-size: 0.8rem; min-width: 80px; font-family: 'Roboto Mono', monospace; }
+.tl-icon { font-size: 1.1rem; }
+.tl-content { flex: 1; }
+.tl-title { font-weight: 600; color: #333; margin-bottom: 2px; }
+.tl-desc { font-size: 0.85rem; color: #666; }
+.tl-dir { font-size: 0.75rem; font-weight: 700; margin-left: 5px; padding: 1px 5px; border-radius: 4px; }
+.tl-dir.up { background: rgba(247,54,70,0.1); color: var(--up-color); }
+.tl-dir.down { background: rgba(51,94,255,0.1); color: var(--down-color); }
+
+/* ── 컨트롤 및 차트 ── */
+[data-testid="stHorizontalBlock"] { gap: 0.5rem !important; margin-bottom: 10px; }
+.stSelectbox label, .stRadio label { font-size: 0.75rem !important; color: #666 !important; }
+.stSelectbox > div > div { background-color: #f9f9f9 !important; border: 1px solid #ddd !important; border-radius: 6px !important; }
+[data-testid="stPlotlyChart"] { width: 100% !important; margin-top: -10px; }
+.modebar { opacity: 0.8 !important; top: 5px !important; right: 5px !important; background: rgba(255,255,255,0.9) !important; border-radius: 4px; }
+
+/* 모바일 반응형 */
+@media (max-width: 768px) {
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .stock-price { font-size: 2rem; }
+    .stock-name { font-size: 1.3rem; }
+    .report-box { padding: 1rem; }
 }
 </style>
 """, unsafe_allow_html=True)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 3. 데이터 로딩 및 처리 (안정성 강화)
+# 3. 데이터 및 설정
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-@st.cache_data(ttl=3600)
-def load_market_data(ticker, fred_code, liq_div):
-    end_dt = datetime.now()
-    start_dt = end_dt - timedelta(days=365 * 15)  # 15년치 데이터
-
-    # (1) 유동성 데이터 (FRED)
-    try:
-        fred_df = web.DataReader(fred_code, "fred", start_dt, end_dt)
-        fred_df.columns = ["Liquidity"]
-        fred_df["Liquidity"] = fred_df["Liquidity"] / liq_div
-    except Exception:
-        # 실패 시 빈 데이터프레임 생성 (차트는 그려지도록)
-        fred_df = pd.DataFrame(columns=["Liquidity"])
-
-    # (2) 주가 데이터 (Yahoo Finance)
-    try:
-        yf_df = yf.download(ticker, start=start_dt, end=end_dt, progress=False)
-        
-        # MultiIndex 컬럼 처리 (핵심)
-        if isinstance(yf_df.columns, pd.MultiIndex):
-            try:
-                # Ticker 레벨 제거하고 속성(Open, Close 등)만 남김
-                yf_df.columns = yf_df.columns.get_level_values(0)
-            except:
-                pass
-        
-        # 필수 컬럼 확인 및 복사
-        required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
-        if not all(col in yf_df.columns for col in required_cols):
-             return None, None, "주가 데이터 형식이 올바르지 않습니다."
-             
-        ohlc = yf_df[required_cols].copy()
-        # 결측치 제거
-        ohlc.dropna(inplace=True)
-        
-    except Exception as e:
-        return None, None, f"주가 데이터 로딩 실패: {str(e)}"
-
-    # (3) 데이터 병합
-    try:
-        # 인덱스 시간대 제거 (tz-naive) 후 병합
-        fred_df.index = fred_df.index.tz_localize(None)
-        ohlc.index = ohlc.index.tz_localize(None)
-        
-        merged = pd.concat([fred_df, ohlc['Close'].rename('Price')], axis=1).ffill()
-        merged = merged.dropna(subset=['Price'])
-        
-        # 파생 변수 계산
-        merged["Liq_MA"] = merged["Liquidity"].rolling(20).mean()
-        merged["Price_MA5"] = merged["Price"].rolling(5).mean()
-        merged["Price_MA20"] = merged["Price"].rolling(20).mean()
-        merged["Price_MA60"] = merged["Price"].rolling(60).mean()
-        merged["Price_MA120"] = merged["Price"].rolling(120).mean()
-        
-        # YoY 및 상관계수
-        merged["Liq_YoY"] = merged["Liquidity"].pct_change(252) * 100
-        merged["Price_YoY"] = merged["Price"].pct_change(252) * 100
-        merged["Corr"] = merged["Liquidity"].rolling(60).corr(merged["Price"])
-
-        return ohlc, merged, None
-
-    except Exception as e:
-        return None, None, f"데이터 처리 중 오류: {str(e)}"
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 4. 설정 및 데이터 준비
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-MARKET_EVENTS = [
-    ("2024-11-05", "트럼프 당선", "🗳️", "up"),
-    ("2025-01-27", "DeepSeek 쇼크", "🤖", "down"),
-    ("2025-04-09", "관세 유예", "🕊️", "up"),
-    ("2025-12-11", "RMP 재개", "💰", "up"),
-    ("2026-02-05", "유동성 확장", "📈", "up"),
+MARKET_PIVOTS = [
+    ("2024-11-05", "트럼프 2기 당선", "규제완화 기대", "🗳️", "up"),
+    ("2025-01-27", "DeepSeek 쇼크", "AI 수익성 우려", "🤖", "down"),
+    ("2025-04-02", "Liberation Day 관세", "관세 공포", "🚨", "down"),
+    ("2025-04-09", "관세 90일 유예", "무역전쟁 완화", "🕊️", "up"),
+    ("2025-12-11", "RMP 국채매입 재개", "유동성 확장", "💰", "up"),
 ]
 
-CONFIG = {
-    "🇺🇸 미국": {"idx": {"S&P 500": "^GSPC", "나스닥": "^IXIC"}, "liq": "BOGMBASE", "div": 1, "label": "본원통화"},
-    "🇰🇷 대한민국": {"idx": {"코스피": "^KS11", "코스닥": "^KQ11"}, "liq": "BOGMBASE", "div": 1, "label": "글로벌 유동성"},
+COUNTRY_CONFIG = {
+    "🇺🇸 미국": {
+        "indices": {"NASDAQ": "^IXIC", "S&P 500": "^GSPC", "다우존스": "^DJI"},
+        "default_idx": 0,
+        "fred_liq": "BOGMBASE",      
+        "fred_rec": "USREC",          
+        "liq_divisor": 1,             
+        "liq_label": "본원통화",
+        "liq_unit": "$B",
+        "liq_prefix": "$",
+        "liq_suffix": "B",
+        "events": MARKET_PIVOTS,
+        "data_src": "FRED · Yahoo",
+    },
+    "🇰🇷 대한민국": {
+        "indices": {"KOSPI": "^KS11", "KOSDAQ": "^KQ11"},
+        "default_idx": 0,
+        "fred_liq": "BOGMBASE",        
+        "fred_rec": "USREC",           
+        "liq_divisor": 1,              
+        "liq_label": "글로벌 유동성(Fed)",
+        "liq_unit": "$B",
+        "liq_prefix": "$",
+        "liq_suffix": "B",
+        "events": MARKET_PIVOTS,
+        "data_src": "FRED · KRX",
+    },
 }
 
-# 컨트롤 바
-c1, c2, c3, c4, c5 = st.columns([1.2, 1.2, 1, 1, 1])
-with c1: country = st.selectbox("국가", list(CONFIG.keys()))
-CC = CONFIG[country]
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_data(ticker, fred_liq, fred_rec, liq_divisor):
+    end_dt = datetime.now()
+    fetch_start = end_dt - timedelta(days=365 * 14)
 
-# 국가 변경 시 지수 초기화
-if st.session_state.get("prev_country") != country:
-    st.session_state["prev_country"] = country
-    st.session_state["idx_idx"] = 0
+    try:
+        # FRED 데이터
+        fred_codes = [fred_liq]
+        if fred_rec: fred_codes.append(fred_rec)
+        fred_df = web.DataReader(fred_codes, "fred", fetch_start, end_dt).ffill()
+        if fred_rec:
+            fred_df.columns = ["Liquidity", "Recession"]
+        else:
+            fred_df.columns = ["Liquidity"]
+            fred_df["Recession"] = 0
+        fred_df["Liquidity"] = fred_df["Liquidity"] / liq_divisor
+    except Exception as e:
+        return None, f"FRED Error: {e}"
 
-with c2: 
-    idx_name = st.selectbox("지수", list(CC["idx"].keys()), index=st.session_state.get("idx_idx", 0))
-    idx_ticker = CC["idx"][idx_name]
+    try:
+        # Yahoo Finance 데이터
+        yf_data = yf.download(ticker, start=fetch_start, end=end_dt, progress=False)
+        if yf_data.empty: return None, "No Data"
+        
+        if isinstance(yf_data.columns, pd.MultiIndex):
+             if 'Close' in yf_data.columns.get_level_values(0):
+                 yf_data.columns = yf_data.columns.get_level_values(0)
+        
+        ohlc = yf_data[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
+        idx_close = yf_data[['Close']].rename(columns={'Close': 'SP500'})
+    except Exception as e:
+        return None, f"YFinance Error: {e}"
 
-with c3: period = st.selectbox("기간", ["1년", "3년", "5년", "10년", "전체"], index=1)
-with c4: tf = st.selectbox("봉", ["일봉", "주봉", "월봉"], index=0)
-with c5: show_evt = st.toggle("이벤트", True)
+    try:
+        # 데이터 병합
+        df = pd.concat([fred_df, idx_close], axis=1).ffill()
+        df = df.dropna(subset=['SP500'])
+        
+        df["Liq_MA"] = df["Liquidity"].rolling(10).mean()
+        df["SP_MA"] = df["SP500"].rolling(10).mean()
+        df["Liq_YoY"] = df["Liquidity"].pct_change(252) * 100
+        df["SP_YoY"] = df["SP500"].pct_change(252) * 100
+        df["Corr_90d"] = df["Liquidity"].rolling(90).corr(df["SP500"])
 
-# 데이터 로드 실행
-with st.spinner(f"{idx_name} 데이터 분석 중..."):
-    ohlc_data, metrics_data, error = load_market_data(idx_ticker, CC["liq"], CC["div"])
+        cut = end_dt - timedelta(days=365 * 12)
+        df = df[df.index >= cut]
+        ohlc = ohlc[ohlc.index >= cut]
+        return (df, ohlc), None
+    except Exception as e:
+        return None, f"Merge Error: {e}"
 
-if error:
-    st.error(error)
+def detect_auto_events(ohlc_df, base_events, threshold=0.05):
+    if ohlc_df is None or len(ohlc_df) < 2: return []
+    daily_ret = ohlc_df["Close"].pct_change()
+    existing = {pd.to_datetime(d).date() for d, *_ in base_events}
+    auto = []
+    for dt, ret in daily_ret.items():
+        if pd.isna(ret) or dt.date() in existing: continue
+        if abs(ret) >= threshold:
+            kind, emoji = ("급등", "🔥") if ret > 0 else ("급락", "⚡")
+            auto.append((dt.strftime("%Y-%m-%d"), f"{kind} {ret*100:.1f}%", f"하루 {kind}", emoji, "up" if ret>0 else "down"))
+            existing.add(dt.date())
+    return auto
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 4. 레이아웃 & 로직
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 컨테이너 구성
+header_con = st.container()
+kpi_con = st.container()
+st.write("")
+ctrl_con = st.container()
+chart_con = st.container()
+brief_con = st.container()
+timeline_con = st.container()
+
+# [컨트롤 바]
+with ctrl_con:
+    c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 1])
+    with c1: country = st.selectbox("🌍 국가", list(COUNTRY_CONFIG.keys()), index=0)
+    CC = COUNTRY_CONFIG[country]
+    IDX_OPTIONS = CC["indices"]
+    
+    if st.session_state.get("_prev_country") != country:
+        st.session_state["_prev_country"] = country
+        st.session_state["idx_select"] = list(IDX_OPTIONS.keys())[CC["default_idx"]]
+        
+    with c2: idx_name = st.selectbox("📈 지수", list(IDX_OPTIONS.keys()), key="idx_select")
+    idx_ticker = IDX_OPTIONS[idx_name]
+    with c3: period = st.selectbox("📅 기간", ["3년", "5년", "7년", "10년", "전체"], index=3)
+    with c4: tf = st.selectbox("🕯️ 봉", ["일봉", "주봉", "월봉"], index=2)
+    with c5: show_events = st.toggle("📌 이벤트", value=True)
+
+# 데이터 로드
+with st.spinner("데이터 로딩중..."):
+    result, err = load_data(idx_ticker, CC["fred_liq"], CC["fred_rec"], CC["liq_divisor"])
+
+if result is None:
+    st.error(f"⚠️ {err}")
     st.stop()
 
+df, ohlc_raw = result
+
 # 기간 필터링
-p_days = {"1년": 365, "3년": 1095, "5년": 1825, "10년": 3650, "전체": 10000}
-start_date = datetime.now() - timedelta(days=p_days[period])
-ohlc_view = ohlc_data[ohlc_data.index >= start_date]
-metrics_view = metrics_data[metrics_data.index >= start_date]
+period_map = {"3년": 3, "5년": 5, "7년": 7, "10년": 10, "전체": 12}
+cutoff = datetime.now() - timedelta(days=365 * period_map[period])
+dff = df[df.index >= cutoff].copy()
+ohlc_filtered = ohlc_raw[ohlc_raw.index >= cutoff].copy()
 
-# 리샘플링 (주봉/월봉 선택 시)
-if tf == "주봉":
-    ohlc_view = ohlc_view.resample("W").agg({'Open':'first','High':'max','Low':'min','Close':'last','Volume':'sum'}).dropna()
-elif tf == "월봉":
-    ohlc_view = ohlc_view.resample("ME").agg({'Open':'first','High':'max','Low':'min','Close':'last','Volume':'sum'}).dropna()
+if ohlc_filtered.empty:
+    st.error("해당 기간의 데이터가 없습니다.")
+    st.stop()
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 5. UI 렌더링: 헤더 & KPI
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-last_row = metrics_data.iloc[-1]
-prev_row = metrics_data.iloc[-2]
-price = last_row["Price"]
-diff = price - prev_row["Price"]
-pct = (diff / prev_row["Price"]) * 100
-cls = "up" if diff > 0 else "down" if diff < 0 else "flat"
-arrow = "▲" if diff > 0 else "▼" if diff < 0 else ""
+# 주요 변수 계산
+latest = df.iloc[-1]
+prev = df.iloc[-2]
+price = latest["SP500"]
+diff = price - prev["SP500"]
+pct = (diff / prev["SP500"]) * 100
+liq_val = latest["Liquidity"]
+liq_yoy = latest["Liq_YoY"]
+sp_yoy = latest["SP_YoY"]
+corr_val = latest["Corr_90d"]
 
-st.markdown(f"""
-<div class="stock-header">
-    <div class="header-top">
-        <span class="stock-name">{idx_name}</span>
-        <span class="stock-code">{idx_ticker}</span>
-    </div>
-    <div class="price-row">
-        <span class="current-price {cls}">{price:,.2f}</span>
-        <span class="price-change {cls}">{arrow} {abs(diff):,.2f} ({pct:+.2f}%)</span>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+cls = "c-up" if diff > 0 else "c-down" if diff < 0 else "c-flat"
+arrow = "▲" if diff > 0 else "▼" if diff < 0 else "-"
 
-# KPI 바
-st.markdown(f"""
-<div class="kpi-bar">
-    <div class="kpi-item">
-        <span class="kpi-title">{CC['label']}</span>
-        <span class="kpi-val">{last_row['Liquidity']:,.0f}B</span>
+# [헤더]
+with header_con:
+    st.markdown(f"""
+    <div class="stock-header-container">
+        <div class="stock-title-row">
+            <span class="stock-name">{idx_name}</span>
+            <span class="stock-ticker">{idx_ticker}</span>
+        </div>
+        <div class="stock-price-row {cls}">
+            <span class="stock-price">{price:,.2f}</span>
+            <span class="stock-change">{arrow} {abs(diff):,.2f} ({pct:+.2f}%)</span>
+        </div>
     </div>
-    <div class="kpi-item">
-        <span class="kpi-title">유동성(YoY)</span>
-        <span class="kpi-val {cls}">{last_row['Liq_YoY']:+.1f}%</span>
-    </div>
-    <div class="kpi-item">
-        <span class="kpi-title">주가(YoY)</span>
-        <span class="kpi-val {cls}">{last_row['Price_YoY']:+.1f}%</span>
-    </div>
-    <div class="kpi-item">
-        <span class="kpi-title">상관계수(60일)</span>
-        <span class="kpi-val" style="color:{'#f73646' if last_row['Corr']>0.5 else '#333'}">{last_row['Corr']:.2f}</span>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 6. 차트 그리기 (네이버 스타일)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-fig = make_subplots(
-    rows=2, cols=1, 
-    shared_xaxes=True, 
-    vertical_spacing=0.02, 
-    row_heights=[0.75, 0.25],
-    specs=[[{"secondary_y": True}], [{"secondary_y": False}]]
-)
+# [KPI 카드]
+def delta_html(val):
+    c = "up" if val >= 0 else "down"
+    return f'<div class="kpi-delta {c}">{val:+.1f}% YoY</div>'
 
-# [1] 유동성 (배경 영역)
-if not metrics_view["Liquidity"].dropna().empty:
+with kpi_con:
+    st.markdown(f"""
+    <div class="kpi-grid">
+        <div class="kpi blue">
+            <div class="kpi-label">💵 {CC['liq_label']}</div>
+            <div class="kpi-value">{CC['liq_prefix']}{liq_val:,.0f}{CC['liq_suffix']}</div>
+            {delta_html(liq_yoy)}
+        </div>
+        <div class="kpi red">
+            <div class="kpi-label">📈 {idx_name}</div>
+            <div class="kpi-value">{price:,.0f}</div>
+            {delta_html(sp_yoy)}
+        </div>
+        <div class="kpi green">
+            <div class="kpi-label">🔗 90일 상관계수</div>
+            <div class="kpi-value">{corr_val:.2f}</div>
+            <div class="kpi-delta {'up' if corr_val>0.5 else 'down'}">{'강한 동행' if corr_val>0.5 else '약한 상관'}</div>
+        </div>
+        <div class="kpi purple">
+            <div class="kpi-label">📅 데이터 기간</div>
+            <div class="kpi-value" style="font-size:1.1rem">{dff.index.min().strftime('%Y.%m')}~</div>
+            <div class="kpi-delta up">{len(dff):,}일</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# [차트]
+def resample(data, rule):
+    return data.resample(rule).agg({
+        'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
+    }).dropna()
+
+if tf == "주봉": chart_data = resample(ohlc_filtered, "W"); dff_chart = dff.resample("W").last().dropna()
+elif tf == "월봉": chart_data = resample(ohlc_filtered, "ME"); dff_chart = dff.resample("ME").last().dropna()
+else: chart_data = ohlc_filtered.copy(); dff_chart = dff.copy()
+
+with chart_container:
+    fig = make_subplots(
+        rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.02,
+        row_heights=[0.8, 0.2],
+        specs=[[{"secondary_y": True}], [{"secondary_y": False}]]
+    )
+    
+    # 1. 유동성 (배경)
     fig.add_trace(go.Scatter(
-        x=metrics_view.index, y=metrics_view["Liquidity"],
-        name=CC["label"],
+        x=dff_chart.index, y=dff_chart["Liquidity"],
+        name=CC['liq_label'],
         fill="tozeroy", fillcolor="rgba(59,130,246,0.05)",
-        line=dict(color="rgba(59,130,246,0.4)", width=1.5),
+        line=dict(color="rgba(59,130,246,0.3)", width=1),
         hoverinfo="skip"
     ), row=1, col=1, secondary_y=True)
 
-# [2] 캔들스틱
-fig.add_trace(go.Candlestick(
-    x=ohlc_view.index,
-    open=ohlc_view['Open'], high=ohlc_view['High'],
-    low=ohlc_view['Low'], close=ohlc_view['Close'],
-    increasing_line_color='#f73646', increasing_fillcolor='#f73646',
-    decreasing_line_color='#335eff', decreasing_fillcolor='#335eff',
-    name='주가'
-), row=1, col=1)
-
-# [3] 이동평균선
-for ma, color in [(5, '#999'), (20, '#f5a623'), (60, '#33bb55'), (120, '#aa55ff')]:
-    # 일봉 기준 MA 계산 (ohlc_view 기준)
-    ma_series = ohlc_view['Close'].rolling(ma).mean()
-    fig.add_trace(go.Scatter(
-        x=ohlc_view.index, y=ma_series,
-        mode='lines', line=dict(color=color, width=1),
-        name=f'{ma}일'
+    # 2. 캔들
+    fig.add_trace(go.Candlestick(
+        x=chart_data.index,
+        open=chart_data['Open'], high=chart_data['High'],
+        low=chart_data['Low'], close=chart_data['Close'],
+        increasing_line_color='#f73646', increasing_fillcolor='#f73646',
+        decreasing_line_color='#335eff', decreasing_fillcolor='#335eff',
+        name='주가'
     ), row=1, col=1)
 
-# [4] 거래량
-colors = ['#f73646' if c >= o else '#335eff' for o, c in zip(ohlc_view['Open'], ohlc_view['Close'])]
-fig.add_trace(go.Bar(
-    x=ohlc_view.index, y=ohlc_view['Volume'],
-    marker_color=colors, name='거래량', showlegend=False
-), row=2, col=1)
+    # 3. 이평선
+    for ma, color in [(5, '#999'), (20, '#f5a623'), (60, '#33bb55'), (120, '#aa55ff')]:
+        ma_s = chart_data['Close'].rolling(ma).mean()
+        fig.add_trace(go.Scatter(
+            x=chart_data.index, y=ma_s, 
+            mode='lines', line=dict(color=color, width=1), 
+            name=f'{ma}일'
+        ), row=1, col=1)
 
-# [5] 이벤트 마커
-if show_evt:
-    for d, t, emo, dr in MARKET_EVENTS:
-        dt = pd.to_datetime(d)
-        if dt >= ohlc_view.index.min() and dt <= ohlc_view.index.max():
-            fig.add_vline(x=dt, line_width=1, line_dash="dot", line_color="#888", row=1, col=1)
-            # 텍스트
+    # 4. 거래량
+    colors = ['#f73646' if c >= o else '#335eff' for o, c in zip(chart_data['Open'], chart_data['Close'])]
+    fig.add_trace(go.Bar(
+        x=chart_data.index, y=chart_data['Volume'],
+        marker_color=colors, showlegend=False, name='거래량'
+    ), row=2, col=1)
+
+    # 5. 이벤트 (자동 감지 + 수동)
+    ALL_EVENTS = []
+    if show_events:
+        auto_events = detect_auto_events(ohlc_filtered, CC["events"])
+        ALL_EVENTS = sorted(CC["events"] + auto_events, key=lambda x: x[0])
+        prev_dt = None
+        min_gap = {"일봉": 15, "주봉": 45, "월봉": 120}.get(tf, 20)
+
+        for date_str, title, _, emoji, direction in ALL_EVENTS:
+            dt = pd.to_datetime(date_str)
+            if dt < chart_data.index.min() or dt > chart_data.index.max(): continue
+            if prev_dt and (dt - prev_dt).days < min_gap: continue
+            prev_dt = dt
+            
+            fig.add_vline(x=dt, line_width=1, line_dash="dot", line_color="rgba(100,100,100,0.3)", row="all", col=1)
+            clr = "#d32f2f" if direction == "up" else "#1976d2"
             fig.add_annotation(
-                x=dt, y=1.02, yref="paper",
-                text=f"{emo} {t}",
-                showarrow=False,
-                font=dict(size=11, color="#f73646" if dr=="up" else "#335eff"),
-                textangle=-30,
-                xanchor="left", yanchor="bottom",
-                row=1, col=1
+                x=dt, y=1.05, yref="paper", text=f"{emoji} {title}",
+                showarrow=False, font=dict(size=11, color=clr),
+                textangle=-30, xanchor="left", yanchor="bottom", row=1, col=1
             )
+            
+    # 6. 리세션
+    if "Recession" in dff_chart.columns:
+        rec = dff_chart[dff_chart["Recession"] == 1]
+        if not rec.empty:
+            # 간단 표시
+            pass
 
-# [레이아웃 설정]
-x_min = ohlc_view.index.min()
-x_max = ohlc_view.index.max() + timedelta(days=1)
-
-fig.update_layout(
-    plot_bgcolor='white', paper_bgcolor='white',
-    margin=dict(t=50, b=20, l=10, r=50), # 우측 여백 확보 (Y축)
-    height=600,
-    hovermode='x unified',
-    dragmode='pan',
-    showlegend=True,
-    legend=dict(
-        orientation="h", yanchor="top", y=0.99, xanchor="left", x=0.01,
-        bgcolor="rgba(255,255,255,0.7)", borderwidth=0
-    ),
-    xaxis=dict(
-        type='date',
-        rangebreaks=[dict(bounds=["sat", "mon"])] if tf == "일봉" else [], # 주말 제거
-        minallowed=x_min, maxallowed=x_max
+    # 레이아웃
+    x_min, x_max = chart_data.index.min(), chart_data.index.max() + timedelta(days=1)
+    
+    fig.update_layout(
+        plot_bgcolor='white', paper_bgcolor='white',
+        margin=dict(t=60, b=20, l=10, r=50),
+        height=600,
+        hovermode='x unified',
+        dragmode='pan',
+        showlegend=True,
+        legend=dict(
+            orientation="h", yanchor="top", y=0.99, xanchor="left", x=0.01,
+            bgcolor="rgba(255,255,255,0.6)", bordercolor="#eee", borderwidth=1, font=dict(size=10)
+        ),
+        xaxis=dict(
+            rangebreaks=[dict(bounds=["sat", "mon"])] if tf == "일봉" else [],
+            minallowed=x_min, maxallowed=x_max
+        )
     )
-)
 
-# 축 스타일
-fig.update_xaxes(gridcolor='#f5f5f5', row=1, col=1)
-fig.update_xaxes(gridcolor='#f5f5f5', row=2, col=1)
+    # 축 설정
+    fig.update_xaxes(gridcolor='#f5f5f5', row=1, col=1)
+    fig.update_xaxes(gridcolor='#f5f5f5', row=2, col=1)
+    
+    # Y축 (오른쪽, 고정)
+    fig.update_yaxes(
+        side='right', gridcolor='#f5f5f5',
+        tickfont=dict(color="#333", size=11),
+        ticklabelposition="outside", zeroline=False,
+        fixedrange=True, row=1, col=1, secondary_y=False
+    )
+    fig.update_yaxes(visible=False, fixedrange=True, row=1, col=1, secondary_y=True)
+    fig.update_yaxes(side='right', showgrid=False, tickformat='.2s', fixedrange=True, row=2, col=1)
 
-# Y축: 오른쪽 배치
-fig.update_yaxes(
-    side='right', gridcolor='#f5f5f5',
-    tickfont=dict(color="#333", size=11),
-    ticklabelposition="outside",
-    fixedrange=True, # Y축 줌 방지
-    row=1, col=1, secondary_y=False
-)
-fig.update_yaxes(visible=False, fixedrange=True, row=1, col=1, secondary_y=True) # 유동성 축 숨김
-fig.update_yaxes(side='right', showgrid=False, tickformat='.2s', fixedrange=True, row=2, col=1)
+    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': True, 'scrollZoom': True})
+    
+    st.markdown("""
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var plot = document.querySelector('.js-plotly-plot');
+        if(plot) { plot.style.touchAction = 'none'; }
+    });
+    </script>
+    """, unsafe_allow_html=True)
 
-# 차트 렌더링
-st.plotly_chart(fig, use_container_width=True, config={
-    'displayModeBar': True,
-    'scrollZoom': True,
-    'displaylogo': False,
-    'modeBarButtonsToRemove': ['select2d', 'lasso2d', 'autoScale2d']
-})
+# [Daily Brief]
+with brief_container:
+    liq_3m_chg = ((df["Liquidity"].iloc[-1] - df["Liquidity"].iloc[-63])/df["Liquidity"].iloc[-63]*100) if len(df)>63 else 0
+    sp_1m_chg = ((df["SP500"].iloc[-1] - df["SP500"].iloc[-21])/df["SP500"].iloc[-21]*100) if len(df)>21 else 0
+    
+    if corr_val > 0.5 and liq_3m_chg > 0:
+        sig_cls, sig_txt = "signal-bullish", "🟢 유동성 확장 + 강한 상관 → 주가 상승 지지"
+    elif corr_val < 0 or liq_3m_chg < -1:
+        sig_cls, sig_txt = "signal-bearish", "🔴 유동성 수축 또는 상관 이탈 → 경계 필요"
+    else:
+        sig_cls, sig_txt = "signal-neutral", "🟡 혼합 시그널 → 방향성 주시"
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 7. 하단 Daily Brief & 타임라인
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-st.markdown(f"""
-<div class="report-card">
-    <div class="report-title">📢 Daily Market Brief</div>
-    <div class="report-text">
-        <strong>{country} 시장 분석 ({datetime.now().strftime('%Y.%m.%d')})</strong><br>
-        현재 <strong>{CC['label']}</strong> 지표는 전년 대비 <span class="highlight">{last_row['Liq_YoY']:+.1f}%</span> 변동을 보이고 있습니다.<br>
-        {idx_name} 지수는 <span class="highlight">{last_row['Price_YoY']:+.1f}%</span>의 연간 변동률을 기록 중이며, 
-        유동성과의 상관계수는 <strong>{last_row['Corr']:.2f}</strong>로 
-        {'매우 밀접하게' if last_row['Corr']>0.7 else '다소 약하게' if last_row['Corr']>0.3 else '반대로'} 움직이고 있습니다.<br><br>
-        최근 시장은 중앙은행의 정책 변화와 거시경제 지표에 민감하게 반응하고 있으니, 
-        주요 이벤트 구간에서의 변동성에 유의하시기 바랍니다.
+    if country == "🇺🇸 미국":
+        b_pol = "연준은 금리를 유지하며 유동성을 조절하고 있습니다."
+        b_liq = f"본원통화는 3개월간 <span class='hl'>{liq_3m_chg:+.1f}%</span> 변동했습니다."
+        b_mkt = f"{idx_name}은 1개월간 <span class='hl'>{sp_1m_chg:+.1f}%</span> 움직였습니다."
+    else:
+        b_pol = "한국은행은 미 연준의 정책과 환율을 주시하고 있습니다."
+        b_liq = f"글로벌 유동성(Fed)은 <span class='hl'>{liq_3m_chg:+.1f}%</span> 변동했습니다."
+        b_mkt = f"{idx_name}은 대외 변수에 민감하며 <span class='hl'>{sp_1m_chg:+.1f}%</span> 등락했습니다."
+
+    b_corr = f"상관계수 <span class='hl'>{corr_val:.2f}</span>. " + \
+             ("유동성과 주가가 강하게 동행합니다." if corr_val > 0.5 else "동행성이 약화되었습니다.")
+
+    st.markdown(f"""
+    <div class="report-box">
+        <div class="report-header">
+            <span class="report-badge">Daily Brief</span>
+            <span class="report-date">{datetime.now().strftime("%Y-%m-%d")}</span>
+        </div>
+        <div class="report-title">📋 오늘의 시장 요약</div>
+        <div class="report-body">
+            {b_pol}<br>{b_liq}<br>{b_mkt}
+            <hr class="report-divider">
+            {b_corr}
+        </div>
+        <div class="report-signal {sig_cls}">{sig_txt}</div>
     </div>
-</div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-# 간단 타임라인
-st.markdown("##### 🗓️ 주요 매크로 이벤트")
-for d, t, emo, dr in reversed(MARKET_EVENTS):
-    if pd.to_datetime(d) < ohlc_view.index.min(): continue
-    color = "#f73646" if dr == "up" else "#335eff"
-    st.markdown(
-        f"<div style='padding:8px 0; border-bottom:1px solid #eee; font-size:0.9rem;'>"
-        f"<span style='color:#888; font-family:monospace; margin-right:10px;'>{d}</span>"
-        f"{emo} <strong>{t}</strong>"
-        f"<span style='float:right; font-weight:bold; color:{color};'>{dr.upper()}</span>"
-        f"</div>", 
-        unsafe_allow_html=True
-    )
+# [타임라인]
+with timeline_container:
+    st.markdown('<div style="font-weight:700; font-size:1.1rem; margin-top:20px;">📅 주요 이벤트</div>', unsafe_allow_html=True)
+    html = '<div class="timeline">'
+    for d, t, desc, e, dr in reversed(ALL_EVENTS):
+        if pd.to_datetime(d) < dff.index.min(): continue
+        c = "up" if dr == "up" else "down"
+        html += f'<div class="tl-item"><div class="tl-date">{d}</div><div class="tl-content"><div class="tl-title">{e} {t} <span class="tl-dir {c}">●</span></div><div class="tl-desc">{desc}</div></div></div>'
+    html += '</div>'
+    st.markdown(html, unsafe_allow_html=True)
 
 # 푸터
-st.markdown("<br><div style='text-align:center; color:#999; font-size:0.8rem;'>Data: FRED, Yahoo Finance / Dev: Streamlit</div>", unsafe_allow_html=True)
+st.markdown('<div class="app-footer" style="margin-top:30px; color:#999; font-size:0.8rem; text-align:center;">Data: FRED, Yahoo Finance · Not Investment Advice</div>', unsafe_allow_html=True)
