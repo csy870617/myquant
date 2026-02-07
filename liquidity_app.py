@@ -188,6 +188,7 @@ COUNTRY_CONFIG = {
         "liq_label": "Net Liquidity",
         "liq_unit": "$B",
         "liq_prefix": "$",
+        "liq_suffix": "B", # ★ 추가됨
         "events": MARKET_PIVOTS,
         "data_src": "FRED (WALCL, WTREGEN, RRP) · Yahoo Finance",
     },
@@ -198,6 +199,7 @@ COUNTRY_CONFIG = {
         "liq_label": "Fed Net Liquidity",
         "liq_unit": "$B",
         "liq_prefix": "$",
+        "liq_suffix": "B", # ★ 추가됨
         "events": MARKET_PIVOTS_KR,
         "data_src": "FRED (Global Liquidity) · Yahoo Finance (KRX)",
     },
