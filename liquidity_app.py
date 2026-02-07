@@ -568,6 +568,40 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 통합 컨트롤 바 (국가 · 지수 · 기간 · 봉주기 · 이벤트)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ctrl1, ctrl2, ctrl3, ctrl4, ctrl5 = st.columns([1.1, 1.1, 1.1, 1.8, 0.7])
+with ctrl1:
+    country = st.selectbox("🌍 국가", list(COUNTRY_CONFIG.keys()), index=0)
+CC = COUNTRY_CONFIG[country]
+IDX_OPTIONS = CC["indices"]
+
+# 국가 변경 시 지수 키 초기화
+if st.session_state.get("_prev_country") != country:
+    st.session_state["_prev_country"] = country
+    st.session_state["idx_select"] = list(IDX_OPTIONS.keys())[CC["default_idx"]]
+
+with ctrl2:
+    idx_name = st.selectbox("📈 지수", list(IDX_OPTIONS.keys()), key="idx_select")
+    idx_ticker = IDX_OPTIONS[idx_name]
+with ctrl3:
+    period = st.selectbox("📅 기간", ["3년", "5년", "7년", "10년", "전체"], index=3)
+with ctrl4:
+    tf = st.radio("🕯️ 봉", ["일봉", "주봉", "월봉"], horizontal=True, key="candle_tf", index=2)
+with ctrl5:
+    show_events = st.toggle("📌 이벤트", value=True)
+
+period_map = {"3년": 3, "5년": 5, "7년": 7, "10년": 10, "전체": 12}
+period_years = period_map[period]
+cutoff = datetime.now() - timedelta(days=365 * period_years)
+
+with st.spinner(f"{CC['liq_label']} & {idx_name} 데이터를 불러오는 중..."):
+    df, ohlc_raw = load_data(idx_ticker, CC["fred_liq"], CC["fred_rec"], CC["liq_divisor"])
+
+if df is None or df.empty:
+    st.error("데이터를 불러올 수 없습니다. 잠시 후 새로고침 해주세요.")
+    st.stop()
 
 # ── 자동 이벤트 감지: OHLC ±3% 일변동 자동 추가 ──
 def detect_auto_events(ohlc_df, base_events, threshold=0.05):
@@ -726,42 +760,6 @@ st.markdown(
     f'</div>',
     unsafe_allow_html=True,
 )
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 통합 컨트롤 바 (국가 · 지수 · 기간 · 봉주기 · 이벤트)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-ctrl1, ctrl2, ctrl3, ctrl4, ctrl5 = st.columns([1.1, 1.1, 1.1, 1.8, 0.7])
-with ctrl1:
-    country = st.selectbox("🌍 국가", list(COUNTRY_CONFIG.keys()), index=0)
-CC = COUNTRY_CONFIG[country]
-IDX_OPTIONS = CC["indices"]
-
-# 국가 변경 시 지수 키 초기화
-if st.session_state.get("_prev_country") != country:
-    st.session_state["_prev_country"] = country
-    st.session_state["idx_select"] = list(IDX_OPTIONS.keys())[CC["default_idx"]]
-
-with ctrl2:
-    idx_name = st.selectbox("📈 지수", list(IDX_OPTIONS.keys()), key="idx_select")
-    idx_ticker = IDX_OPTIONS[idx_name]
-with ctrl3:
-    period = st.selectbox("📅 기간", ["3년", "5년", "7년", "10년", "전체"], index=3)
-with ctrl4:
-    tf = st.radio("🕯️ 봉", ["일봉", "주봉", "월봉"], horizontal=True, key="candle_tf", index=2)
-with ctrl5:
-    show_events = st.toggle("📌 이벤트", value=True)
-
-period_map = {"3년": 3, "5년": 5, "7년": 7, "10년": 10, "전체": 12}
-period_years = period_map[period]
-cutoff = datetime.now() - timedelta(days=365 * period_years)
-
-with st.spinner(f"{CC['liq_label']} & {idx_name} 데이터를 불러오는 중..."):
-    df, ohlc_raw = load_data(idx_ticker, CC["fred_liq"], CC["fred_rec"], CC["liq_divisor"])
-
-if df is None or df.empty:
-    st.error("데이터를 불러올 수 없습니다. 잠시 후 새로고침 해주세요.")
-    st.stop()
-
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 차트
