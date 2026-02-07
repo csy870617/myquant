@@ -506,8 +506,8 @@ BASE_LAYOUT = dict(
     font=dict(family="Pretendard, sans-serif", color="#475569", size=12),
     hovermode="x unified",
     hoverlabel=dict(bgcolor="white", bordercolor="#e2e8f0", font=dict(color="#1e293b", size=12)),
-    # ★ 수정: 상단 여백 넉넉하게, 우측 여백 최소화
-    margin=dict(t=50, b=30, l=40, r=10), dragmode="pan",
+    # ★ 수정: 상단 여백(t)을 60px로 늘려 툴바 공간 확보
+    margin=dict(t=60, b=30, l=40, r=10), dragmode="pan",
 )
 
 def add_events_to_fig(fig, dff, events, has_rows=False, min_gap_days=30):
@@ -868,10 +868,11 @@ if show_events:
 # 리세션 음영
 add_recession(fig_candle, dff, True)
 
+# ★ 수정: 범례(Legend) 왼쪽으로 이동, 상단 마진 확보
 fig_candle.update_layout(
     **BASE_LAYOUT, height=700, showlegend=True,
     legend=dict(orientation="h", yanchor="bottom", y=1.02,
-                xanchor="center", x=0.5, font=dict(size=11),
+                xanchor="left", x=0, font=dict(size=11),
                 bgcolor="rgba(0,0,0,0)"),
     xaxis_rangeslider_visible=False,
 )
