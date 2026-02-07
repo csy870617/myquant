@@ -22,9 +22,10 @@ except Exception:
     pass
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 2. 자동 새로고침 로직
+# 2. 자동 새로고침 로직 (제공해주신 코드 방식)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def get_next_refresh():
+    """다음 새로고침 시각까지 남은 초 계산 (PST 09/18 + KST 09/18)"""
     utc_now = datetime.now(ZoneInfo("UTC"))
     utc_hours = [0, 2, 9, 17]
     targets = []
@@ -39,14 +40,16 @@ def get_next_refresh():
     return local_next, secs
 
 NEXT_REFRESH_TIME, REFRESH_SECS = get_next_refresh()
+
 st.markdown(
     f'<meta http-equiv="refresh" content="{min(REFRESH_SECS, 3600)}">',
     unsafe_allow_html=True,
 )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 3. 디자인 시스템 (CSS / Bento Grid / Modern UI)
+# 3. 디자인 시스템 (Modern / Bento Grid Style)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ★ 디자인은 최신 힙한 스타일 유지
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800&display=swap');
@@ -60,13 +63,11 @@ st.markdown("""
     --accent-primary: #3B82F6;
     --accent-success: #10B981;
     --accent-danger: #EF4444;
-    --accent-warn: #F59E0B;
     --border-color: rgba(229, 231, 235, 0.8);
     --shadow-soft: 0 10px 40px -10px rgba(0,0,0,0.05);
     --shadow-hover: 0 20px 40px -10px rgba(0,0,0,0.1);
     --radius-l: 24px;
     --radius-m: 16px;
-    --radius-s: 12px;
 }
 
 html, body, [data-testid="stAppViewContainer"] {
@@ -75,7 +76,6 @@ html, body, [data-testid="stAppViewContainer"] {
     color: var(--text-main);
 }
 
-/* 상단 헤더 숨김 및 패딩 조정 */
 [data-testid="stHeader"] { background: transparent !important; }
 .block-container {
     padding-top: 2rem !important;
@@ -83,10 +83,10 @@ html, body, [data-testid="stAppViewContainer"] {
     max-width: 1400px;
 }
 
-/* ── Typography & Header ── */
+/* ── Header ── */
 .header-container {
     display: flex; flex-direction: column; align-items: flex-start;
-    margin-bottom: 2rem; position: relative;
+    margin-bottom: 2rem;
 }
 .header-badge {
     background: linear-gradient(135deg, #2563EB, #4F46E5);
@@ -100,138 +100,56 @@ html, body, [data-testid="stAppViewContainer"] {
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     margin-bottom: 0.4rem;
 }
-.header-desc {
-    font-size: 1rem; color: var(--text-sub); font-weight: 400; line-height: 1.5;
-}
+.header-desc { font-size: 1rem; color: var(--text-sub); }
 
-/* ── Bento Grid System ── */
+/* ── Bento Grid ── */
 .bento-grid {
     display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px;
 }
 .bento-card {
-    background: var(--card-bg);
-    border-radius: var(--radius-l);
-    padding: 1.5rem;
-    border: 1px solid var(--border-color);
-    box-shadow: var(--shadow-soft);
+    background: var(--card-bg); border-radius: var(--radius-l); padding: 1.5rem;
+    border: 1px solid var(--border-color); box-shadow: var(--shadow-soft);
     transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-    position: relative; overflow: hidden;
     display: flex; flex-direction: column; justify-content: space-between;
 }
-.bento-card:hover {
-    transform: translateY(-4px);
-    box-shadow: var(--shadow-hover);
-    border-color: rgba(59,130,246,0.3);
-}
+.bento-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-hover); }
 
-/* KPI Styles */
-.kpi-title {
-    font-size: 0.8rem; font-weight: 600; color: var(--text-sub);
-    text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;
-    display: flex; align-items: center; gap: 6px;
-}
-.kpi-metric {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 1.8rem; font-weight: 700; color: var(--text-main);
-    letter-spacing: -0.04em; margin-bottom: 4px;
-}
-.kpi-sub {
-    font-size: 0.85rem; font-weight: 500; display: flex; align-items: center; gap: 4px;
-}
+.kpi-title { font-size: 0.8rem; font-weight: 600; color: var(--text-sub); text-transform: uppercase; margin-bottom: 8px; }
+.kpi-metric { font-family: 'JetBrains Mono', monospace; font-size: 1.8rem; font-weight: 700; color: var(--text-main); margin-bottom: 4px; }
+.kpi-sub { font-size: 0.85rem; font-weight: 500; }
 .trend-up { color: var(--accent-success); background: rgba(16,185,129,0.1); padding: 2px 8px; border-radius: 6px; }
 .trend-down { color: var(--accent-danger); background: rgba(239,68,68,0.1); padding: 2px 8px; border-radius: 6px; }
 
-/* ── Report Card (Modern Chat Bubble Style) ── */
+/* ── Report Container ── */
 .report-container {
-    background: #FFFFFF;
-    border-radius: var(--radius-l);
-    border: 1px solid var(--border-color);
-    padding: 2rem; margin-bottom: 24px;
-    box-shadow: var(--shadow-soft);
+    background: #FFFFFF; border-radius: var(--radius-l); border: 1px solid var(--border-color);
+    padding: 2rem; margin-bottom: 24px; box-shadow: var(--shadow-soft);
 }
-.report-top {
-    display: flex; justify-content: space-between; align-items: flex-start;
-    border-bottom: 1px dashed var(--border-color); padding-bottom: 1.2rem; margin-bottom: 1.2rem;
-}
-.report-hl {
-    background: linear-gradient(90deg, rgba(59,130,246,0.1), transparent);
-    color: var(--accent-primary); padding: 2px 6px; border-radius: 4px; font-weight: 700;
-}
-.signal-badge {
-    padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; font-weight: 700;
-    display: inline-flex; align-items: center; gap: 6px;
-}
+.report-top { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px dashed var(--border-color); padding-bottom: 1.2rem; margin-bottom: 1.2rem; }
+.signal-badge { padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; font-weight: 700; }
 .sig-bull { background: #ECFDF5; color: #059669; border: 1px solid #A7F3D0; }
 .sig-bear { background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; }
 .sig-neu  { background: #FFFBEB; color: #D97706; border: 1px solid #FDE68A; }
 
-/* ── Timeline (Modern Track) ── */
-.timeline-track {
-    position: relative; padding-left: 24px; margin-top: 1rem;
-}
-.timeline-track::before {
-    content: ''; position: absolute; left: 6px; top: 0; bottom: 0;
-    width: 2px; background: #E5E7EB; border-radius: 2px;
-}
-.tl-card {
-    position: relative; background: #fff; margin-bottom: 16px;
-    padding: 16px; border-radius: var(--radius-m);
-    border: 1px solid var(--border-color);
-    transition: transform 0.2s;
-}
-.tl-card:hover { background: #FAFAFA; }
-.tl-dot {
-    position: absolute; left: -23px; top: 20px;
-    width: 10px; height: 10px; background: #fff;
-    border: 2px solid var(--accent-primary); border-radius: 50%;
-    z-index: 2;
-}
-.tl-date {
-    font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--text-sub); margin-bottom: 4px;
-}
-.tl-head {
-    display: flex; justify-content: space-between; align-items: flex-start;
-}
-.tl-tag {
-    font-size: 0.7rem; font-weight: 700; padding: 3px 8px; border-radius: 100px; text-transform: uppercase;
-}
+/* ── Timeline ── */
+.timeline-track { position: relative; padding-left: 24px; margin-top: 1rem; }
+.timeline-track::before { content: ''; position: absolute; left: 6px; top: 0; bottom: 0; width: 2px; background: #E5E7EB; border-radius: 2px; }
+.tl-card { position: relative; background: #fff; margin-bottom: 16px; padding: 16px; border-radius: var(--radius-m); border: 1px solid var(--border-color); }
+.tl-dot { position: absolute; left: -23px; top: 20px; width: 10px; height: 10px; background: #fff; border: 2px solid var(--accent-primary); border-radius: 50%; z-index: 2; }
+.tl-date { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--text-sub); margin-bottom: 4px; }
+.tl-tag { font-size: 0.7rem; font-weight: 700; padding: 3px 8px; border-radius: 100px; text-transform: uppercase; float: right; }
 .tag-up { background: #ECFDF5; color: #059669; }
 .tag-down { background: #FEF2F2; color: #DC2626; }
 
-/* ── Control Bar Styling ── */
-div[data-testid="stHorizontalBlock"] {
-    background: white; padding: 12px; border-radius: 16px;
-    border: 1px solid var(--border-color); box-shadow: var(--shadow-soft);
-    align-items: center;
-}
-.stSelectbox label { font-size: 0.75rem !important; font-weight: 700 !important; color: #9CA3AF !important; }
-.stSelectbox div[data-baseweb="select"] > div {
-    background-color: #F9FAFB !important; border: 1px solid #E5E7EB !important; border-radius: 8px !important;
-}
-
-/* ── Chart Container ── */
-.chart-wrapper {
-    background: white; border-radius: var(--radius-l);
-    border: 1px solid var(--border-color); padding: 16px;
-    box-shadow: var(--shadow-soft);
-}
-
-/* ── Refresh Bar ── */
-.status-pill {
-    display: inline-flex; align-items: center; gap: 8px;
-    background: #fff; border: 1px solid #E5E7EB;
-    padding: 6px 16px; border-radius: 100px;
-    font-size: 0.75rem; color: var(--text-sub); font-weight: 500;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.03); margin-bottom: 1.5rem;
-}
+/* ── Control & Chart ── */
+div[data-testid="stHorizontalBlock"] { background: white; padding: 12px; border-radius: 16px; border: 1px solid var(--border-color); box-shadow: var(--shadow-soft); align-items: center; }
+.chart-wrapper { background: white; border-radius: var(--radius-l); border: 1px solid var(--border-color); padding: 16px; box-shadow: var(--shadow-soft); }
+.status-pill { display: inline-flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #E5E7EB; padding: 6px 16px; border-radius: 100px; font-size: 0.75rem; color: var(--text-sub); font-weight: 500; box-shadow: 0 2px 5px rgba(0,0,0,0.03); margin-bottom: 1.5rem; }
 .status-dot { width: 8px; height: 8px; background: #10B981; border-radius: 50%; animation: pulse 2s infinite; }
 
-/* Mobile Optimization */
 @media (max-width: 768px) {
     .bento-grid { grid-template-columns: repeat(2, 1fr); }
     .header-title { font-size: 1.6rem; }
-    .kpi-metric { font-size: 1.4rem; }
-    .report-container > div[style*="grid-template-columns"] { grid-template-columns: 1fr !important; }
 }
 @media (max-width: 480px) {
     .bento-grid { grid-template-columns: 1fr; }
@@ -241,7 +159,7 @@ div[data-testid="stHorizontalBlock"] {
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 4. 데이터 & 이벤트 로드
+# 4. 데이터 & 이벤트 로드 (제공된 코드 로직 적용)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 MARKET_PIVOTS = [
     ("2015-08-24", "중국발 블랙먼데이", "위안 절하·중국 증시 폭락 → 글로벌 동반 급락 -3.9%", "🇨🇳", "down"),
@@ -347,10 +265,11 @@ def load_data(ticker, fred_liq, fred_rec, liq_divisor):
     try:
         end_dt = datetime.now()
         fetch_start = end_dt - timedelta(days=365 * 14)
+
+        # [A] FRED 데이터
         try:
             fred_codes = [fred_liq]
-            if fred_rec:
-                fred_codes.append(fred_rec)
+            if fred_rec: fred_codes.append(fred_rec)
             fred_df = web.DataReader(fred_codes, "fred", fetch_start, end_dt).ffill()
             if fred_rec:
                 fred_df.columns = ["Liquidity", "Recession"]
@@ -362,10 +281,12 @@ def load_data(ticker, fred_liq, fred_rec, liq_divisor):
             st.error(f"FRED 데이터 로드 실패: {e}")
             return None, None
 
+        # [B] 주가 지수 데이터
         try:
             import yfinance as yf
             yf_data = yf.download(ticker, start=fetch_start, end=end_dt, progress=False)
             if yf_data.empty: return None, None
+            
             if isinstance(yf_data.columns, pd.MultiIndex):
                 idx_close = yf_data['Close'][[ticker]].rename(columns={ticker: 'SP500'})
                 ohlc = yf_data[[('Open',ticker),('High',ticker),('Low',ticker),('Close',ticker),('Volume',ticker)]].copy()
@@ -374,8 +295,10 @@ def load_data(ticker, fred_liq, fred_rec, liq_divisor):
                 idx_close = yf_data[['Close']].rename(columns={'Close': 'SP500'})
                 ohlc = yf_data[['Open','High','Low','Close','Volume']].copy()
         except Exception as e:
+            st.error(f"지수 데이터 로드 실패: {e}")
             return None, None
 
+        # [C] 데이터 통합
         df = pd.concat([fred_df, idx_close], axis=1).ffill()
         if 'SP500' in df.columns:
             df["Liq_MA"] = df["Liquidity"].rolling(10).mean()
@@ -399,8 +322,9 @@ def load_data(ticker, fred_liq, fred_rec, liq_divisor):
         return None, None
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 5. 차트 헬퍼 (모던 컬러 적용)
+# 5. 차트 헬퍼 (제공된 코드의 변수 및 함수 활용)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Modern Color Palette 적용
 C = {
     "liq": "#3B82F6", "liq_fill": "rgba(59,130,246,0.1)",
     "sp": "#1F2937", "sp_fill": "rgba(0,0,0,0)",
@@ -447,7 +371,7 @@ def ax(extra=None):
     return d
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 6. 헤더 및 상태바
+# 6. 헤더 및 상태바 (Modern UI)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 st.markdown("""
 <div class="header-container">
@@ -460,7 +384,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# 상태바
 now_str = datetime.now().strftime("%Y.%m.%d %H:%M")
 next_str = NEXT_REFRESH_TIME.strftime("%m/%d %H:%M")
 st.markdown(
@@ -476,7 +399,7 @@ brief_container = st.container()
 st.write("")
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 7. 컨트롤 바 (스타일만 변경, 로직 동일)
+# 7. 컨트롤 바 (기능 동일)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ctrl1, ctrl2, ctrl3, ctrl4, ctrl5 = st.columns([1, 1, 1, 1, 0.5])
 with ctrl1:
@@ -511,7 +434,7 @@ if df is None or df.empty:
     st.error("데이터 로드 실패")
     st.stop()
 
-# Auto Events
+# Auto Events (제공된 코드 로직 적용)
 def detect_auto_events(ohlc_df, base_events, threshold=0.05):
     if ohlc_df is None or ohlc_df.empty or len(ohlc_df) < 2: return []
     daily_ret = ohlc_df["Close"].pct_change()
@@ -521,8 +444,8 @@ def detect_auto_events(ohlc_df, base_events, threshold=0.05):
         if pd.isna(ret) or dt_idx.date() in existing_dates: continue
         if abs(ret) < threshold: continue
         pct = ret * 100
-        if ret > 0: auto.append((dt_idx.strftime("%Y-%m-%d"), f"급등 {pct:+.1f}%", f"변동폭 확대", "🔥", "up"))
-        else: auto.append((dt_idx.strftime("%Y-%m-%d"), f"급락 {pct:+.1f}%", f"변동폭 확대", "⚡", "down"))
+        if ret > 0: auto.append((dt_idx.strftime("%Y-%m-%d"), f"급등 {pct:+.1f}%", f"하루 {pct:+.1f}% 변동", "🔥", "up"))
+        else: auto.append((dt_idx.strftime("%Y-%m-%d"), f"급락 {pct:+.1f}%", f"하루 {pct:+.1f}% 변동", "⚡", "down"))
         existing_dates.add(dt_idx.date())
     return auto
 
@@ -531,7 +454,7 @@ AUTO_EVENTS = detect_auto_events(ohlc_raw, BASE_EVENTS)
 ALL_EVENTS = sorted(BASE_EVENTS + AUTO_EVENTS, key=lambda x: x[0])
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 8. KPI (Bento Cards)
+# 8. KPI (Bento Style)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 with kpi_container:
     latest = df.dropna(subset=["Liquidity", "SP500"]).iloc[-1]
@@ -546,7 +469,6 @@ with kpi_container:
         return f'<span class="{cls}">{txt}</span>'
 
     liq_display = f"{CC['liq_prefix']}{liq_val:,.0f}"
-    corr_cls = "trend-up" if corr_val >= 0 else "trend-down"
     
     st.markdown(f"""
     <div class="bento-grid">
@@ -582,133 +504,77 @@ with kpi_container:
     """, unsafe_allow_html=True)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 9. Daily Brief (Advanced AI Analysis Style)
+# 9. AI Market Insight (Advanced Logic)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 with brief_container:
-    # ── [1] 추가 기술적 분석 지표 계산 ──
-    # RSI (14일) 계산
+    # (기술적 분석 로직 추가)
     delta = df['SP500'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / loss
     df['RSI'] = 100 - (100 / (1 + rs))
     current_rsi = df['RSI'].iloc[-1] if len(df) > 14 else 50
-    
-    # 이격도 (현재가 / 60일 이평선)
     ma60 = df['SP500'].rolling(60).mean().iloc[-1]
     disparity = (latest["SP500"] / ma60 * 100) - 100 if ma60 > 0 else 0
 
-    # 유동성 및 시장 추세 데이터
     liq_3m = df["Liquidity"].dropna()
     liq_3m_chg = ((liq_3m.iloc[-1] - liq_3m.iloc[-63]) / liq_3m.iloc[-63] * 100) if len(liq_3m) > 63 else 0
     sp_1m = df["SP500"].dropna()
     sp_1m_chg = ((sp_1m.iloc[-1] - sp_1m.iloc[-21]) / sp_1m.iloc[-21] * 100) if len(sp_1m) > 21 else 0
 
-    # ── [2] 동적 분석 텍스트 생성 로직 ──
-    # (A) 유동성 환경 진단
     if liq_3m_chg > 1.0:
-        liq_status = "확장 국면 (Expansionary)"
-        liq_desc = "중앙은행의 적극적인 유동성 공급이 시장의 하단을 지지하고 있습니다."
-        liq_badge_color = "sig-bull"
+        liq_status, liq_badge_color = "확장 국면", "sig-bull"
+        liq_desc = "중앙은행의 유동성 공급이 시장을 지지합니다."
     elif liq_3m_chg < -1.0:
-        liq_status = "축소 국면 (Contractionary)"
-        liq_desc = "유동성 회수가 진행되고 있어 밸류에이션 부담이 가중될 수 있습니다."
-        liq_badge_color = "sig-bear"
+        liq_status, liq_badge_color = "축소 국면", "sig-bear"
+        liq_desc = "유동성 회수로 밸류에이션 부담이 커질 수 있습니다."
     else:
-        liq_status = "중립 (Neutral)"
-        liq_desc = "유동성 변화가 크지 않아, 실적 등 펀더멘털 요인이 더 중요해진 시점입니다."
-        liq_badge_color = "sig-neu"
+        liq_status, liq_badge_color = "중립", "sig-neu"
+        liq_desc = "유동성 변화가 제한적이며 실적 장세 흐름입니다."
 
-    # (B) 기술적 과열/침체 진단
     if current_rsi > 70:
-        tech_signal = "과매수 (Overbought)"
-        tech_desc = f"RSI가 {current_rsi:.0f}에 도달하여 단기 차익실현 매물 출회 가능성이 높습니다."
-        tech_color = "#EF4444"
+        tech_signal, tech_color, tech_desc = "과매수 (Overbought)", "#EF4444", f"RSI {current_rsi:.0f} 도달, 단기 차익실현 주의."
     elif current_rsi < 30:
-        tech_signal = "과매도 (Oversold)"
-        tech_desc = f"RSI가 {current_rsi:.0f}로 침체권이며, 기술적 반등을 모색할 구간입니다."
-        tech_color = "#10B981"
+        tech_signal, tech_color, tech_desc = "과매도 (Oversold)", "#10B981", f"RSI {current_rsi:.0f} 침체권, 기술적 반등 가능성."
     else:
-        tech_signal = "안정적 (Stable)"
-        tech_desc = f"RSI {current_rsi:.0f} 수준으로, 추세가 지속될 여력이 남아있습니다."
-        tech_color = "#6B7280"
+        tech_signal, tech_color, tech_desc = "안정적 (Stable)", "#6B7280", f"RSI {current_rsi:.0f} 수준으로 추세 지속 가능."
 
-    # (C) 종합 투자 의견 (Signal)
     if corr_val > 0.4 and liq_3m_chg > 0 and sp_1m_chg > -5:
-        main_signal = "STRONG BUY"
-        main_badge = "sig-bull"
-        main_comment = "유동성과 펀더멘털이 동조하며 상승 탄력을 강화하고 있습니다."
+        main_signal, main_badge, main_comment = "STRONG BUY", "sig-bull", "유동성과 펀더멘털의 동조 상승."
     elif corr_val < -0.3:
-        main_signal = "DIVERGENCE"
-        main_badge = "sig-bear"
-        main_comment = "유동성 환경과 주가가 괴리(Divergence)를 보이고 있어 변동성에 유의해야 합니다."
-    elif liq_3m_chg < -2 and sp_1m_chg < 0:
-        main_signal = "RISK OFF"
-        main_badge = "sig-bear"
-        main_comment = "유동성 위축과 가격 조정이 동시에 나타나는 약세장 흐름입니다."
+        main_signal, main_badge, main_comment = "DIVERGENCE", "sig-bear", "유동성과 주가의 괴리 발생, 변동성 주의."
     else:
-        main_signal = "HOLD / WATCH"
-        main_badge = "sig-neu"
-        main_comment = "명확한 방향성보다는 박스권 등락 또는 추세 전환을 탐색하는 구간입니다."
+        main_signal, main_badge, main_comment = "HOLD / WATCH", "sig-neu", "방향성 탐색 구간, 리스크 관리 필요."
 
-    # ── [3] UI 렌더링 ──
     st.markdown(f"""
     <div class="report-container">
         <div class="report-top">
             <div style="display:flex; flex-direction:column; gap:4px;">
-                <div style="font-size:0.8rem; font-weight:600; color:#9CA3AF; letter-spacing:0.05em;">AI MARKET INSIGHT</div>
+                <div style="font-size:0.8rem; font-weight:600; color:#9CA3AF;">AI MARKET INSIGHT</div>
                 <div style="font-weight:800; font-size:1.4rem; color:#111827;">Strategy Report</div>
             </div>
             <div class="signal-badge {main_badge}" style="font-size:1rem; padding:8px 16px;">{main_signal}</div>
         </div>
-
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:24px; margin-bottom:1.5rem;">
-            
             <div style="background:#F9FAFB; padding:16px; border-radius:12px; border:1px solid #F3F4F6;">
-                <div style="font-size:0.85rem; font-weight:700; color:#4B5563; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
-                    <span style="background:#DBEAFE; color:#1E40AF; padding:2px 6px; border-radius:4px; font-size:0.7rem;">MACRO</span>
-                    Liquidity Environment
-                </div>
-                <div style="font-size:1.1rem; font-weight:800; color:#1F2937; margin-bottom:6px;">{liq_status}</div>
-                <div style="font-size:0.85rem; color:#6B7280; line-height:1.6;">
-                    {liq_desc}<br>
-                    <span style="font-size:0.8rem; color:#9CA3AF; margin-top:4px; display:block;">
-                        • 3개월 변동: <span style="font-family:'JetBrains Mono'; font-weight:600; color:{'#10B981' if liq_3m_chg>0 else '#EF4444'}">{liq_3m_chg:+.2f}%</span><br>
-                        • 유동성-주가 상관계수: <span style="font-family:'JetBrains Mono'; font-weight:600;">{corr_val:.2f}</span>
-                    </span>
-                </div>
+                <div style="font-size:0.85rem; font-weight:700; color:#4B5563; margin-bottom:6px;">🌊 Liquidity</div>
+                <div style="font-size:1.1rem; font-weight:800; color:#1F2937; margin-bottom:4px;">{liq_status}</div>
+                <div style="font-size:0.85rem; color:#6B7280;">{liq_desc} (3M {liq_3m_chg:+.2f}%)</div>
             </div>
-
             <div style="background:#F9FAFB; padding:16px; border-radius:12px; border:1px solid #F3F4F6;">
-                <div style="font-size:0.85rem; font-weight:700; color:#4B5563; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
-                    <span style="background:#FEF3C7; color:#92400E; padding:2px 6px; border-radius:4px; font-size:0.7rem;">TECH</span>
-                    Price Momentum
-                </div>
-                <div style="font-size:1.1rem; font-weight:800; color:{tech_color}; margin-bottom:6px;">{tech_signal}</div>
-                <div style="font-size:0.85rem; color:#6B7280; line-height:1.6;">
-                    {tech_desc}<br>
-                    <span style="font-size:0.8rem; color:#9CA3AF; margin-top:4px; display:block;">
-                        • RSI (14): <span style="font-family:'JetBrains Mono'; font-weight:600;">{current_rsi:.1f}</span><br>
-                        • 60일 이평 이격도: <span style="font-family:'JetBrains Mono'; font-weight:600; color:{'#10B981' if disparity>0 else '#EF4444'}">{disparity:+.2f}%</span>
-                    </span>
-                </div>
+                <div style="font-size:0.85rem; font-weight:700; color:#4B5563; margin-bottom:6px;">📊 Momentum</div>
+                <div style="font-size:1.1rem; font-weight:800; color:{tech_color}; margin-bottom:4px;">{tech_signal}</div>
+                <div style="font-size:0.85rem; color:#6B7280;">{tech_desc}</div>
             </div>
         </div>
-
-        <div style="border-top:1px dashed #E5E7EB; padding-top:16px;">
-            <div style="font-size:0.9rem; font-weight:600; color:#374151; margin-bottom:4px;">💡 Actionable Insight</div>
-            <div style="font-size:0.9rem; color:#4B5563; line-height:1.6;">
-                {main_comment} {idx_name} 지수는 현재 단기적으로 <strong>{sp_1m_chg:+.1f}%</strong> 변동하며 
-                {'상승 추세를 유지' if sp_1m_chg > 0 else '조정 압력을 받고'} 있습니다. 
-                특히 유동성 지표와의 상관관계가 <strong>{'높으므로(High Correlation)' if abs(corr_val) > 0.5 else '낮으므로(Decoupling)'}</strong>, 
-                {'중앙은행의 정책 변화를 최우선으로 모니터링해야 합니다.' if abs(corr_val) > 0.5 else '개별 기업 실적과 자체 모멘텀에 집중하는 전략이 유효합니다.'}
-            </div>
+        <div style="border-top:1px dashed #E5E7EB; padding-top:16px; font-size:0.9rem; color:#4B5563; line-height:1.6;">
+            💡 <strong>Insight:</strong> {main_comment} {idx_name} 지수는 최근 1개월간 <strong>{sp_1m_chg:+.1f}%</strong> 변동했습니다.
         </div>
     </div>
     """, unsafe_allow_html=True)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 10. 차트 (Clean Modern)
+# 10. 차트 (데이터 & 스케일링 로직은 기존 코드 방식 적용 + 디자인은 Modern)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 st.markdown('<div class="chart-wrapper">', unsafe_allow_html=True)
 
@@ -727,35 +593,50 @@ for ma_len in [20, 60, 120]:
 
 vol_colors = ["#EF4444" if c < o else "#10B981" for o, c in zip(ohlc_chart["Open"], ohlc_chart["Close"])]
 
-fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.8, 0.2], specs=[[{"secondary_y": True}], [{"secondary_y": False}]])
+fig_candle = make_subplots(
+    rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03,
+    row_heights=[0.75, 0.25],
+    specs=[[{"secondary_y": True}], [{"secondary_y": False}]])
 
-# Liquidity (Area)
+# [기존 코드 로직 적용] 유동성 (우측 Y축, 배경 영역)
 liq_series = dff["Liq_MA"].dropna()
-fig.add_trace(go.Scatter(
-    x=liq_series.index, y=liq_series, name=CC['liq_label'],
-    fill="tozeroy", fillcolor=C["liq_fill"], line=dict(color=C["liq"], width=2),
-    hovertemplate="%{y:,.0f}"
+liq_hover_fmt = f"%{{y:,.0f}}{CC['liq_suffix']}<extra>{CC['liq_label']}</extra>"
+fig_candle.add_trace(go.Scatter(
+    x=liq_series.index, y=liq_series, name=f"{CC['liq_label']}",
+    fill="tozeroy", fillcolor=C["liq_fill"],
+    line=dict(color=C["liq"], width=2), # 색상만 Modern 테마 적용
+    hovertemplate=liq_hover_fmt
 ), row=1, col=1, secondary_y=True)
 
-# Candle
-fig.add_trace(go.Candlestick(
-    x=ohlc_chart.index, open=ohlc_chart["Open"], high=ohlc_chart["High"],
+# 캔들스틱
+fig_candle.add_trace(go.Candlestick(
+    x=ohlc_chart.index,
+    open=ohlc_chart["Open"], high=ohlc_chart["High"],
     low=ohlc_chart["Low"], close=ohlc_chart["Close"],
     increasing_line_color="#10B981", increasing_fillcolor="#10B981",
     decreasing_line_color="#EF4444", decreasing_fillcolor="#EF4444",
-    name=idx_name, whiskerwidth=0.4
+    name=idx_name, whiskerwidth=0.4,
 ), row=1, col=1)
 
-# MA
+# 이동평균선
 ma_colors = {"MA20": "#F59E0B", "MA60": "#8B5CF6", "MA120": "#6B7280"}
-for ma, clr in ma_colors.items():
-    s = ohlc_chart[ma].dropna()
-    if len(s) > 0: fig.add_trace(go.Scatter(x=s.index, y=s, name=ma, line=dict(color=clr, width=1.5)), row=1, col=1)
+for ma_name, ma_color in ma_colors.items():
+    s = ohlc_chart[ma_name].dropna()
+    if len(s) > 0:
+        fig_candle.add_trace(go.Scatter(
+            x=s.index, y=s, name=ma_name,
+            line=dict(color=ma_color, width=1.5),
+            hovertemplate="%{y:,.0f}<extra>" + ma_name + "</extra>"
+        ), row=1, col=1)
 
-# Volume
-fig.add_trace(go.Bar(x=ohlc_chart.index, y=ohlc_chart["Volume"], marker_color=vol_colors, opacity=0.4, showlegend=False), row=2, col=1)
+# 거래량
+fig_candle.add_trace(go.Bar(
+    x=ohlc_chart.index, y=ohlc_chart["Volume"], name="Volume",
+    marker_color=vol_colors, opacity=0.4, showlegend=False,
+    hovertemplate="%{y:,.0f}<extra>Volume</extra>"
+), row=2, col=1)
 
-# Event Markers
+# 이벤트 표시
 if show_events:
     gap_map = {"일봉": 14, "주봉": 45, "월봉": 120}
     min_gap = gap_map.get(tf, 30)
@@ -765,27 +646,39 @@ if show_events:
         if dt < ohlc_chart.index.min() or dt > ohlc_chart.index.max(): continue
         if prev_dt and (dt - prev_dt).days < min_gap: continue
         prev_dt = dt
-        fig.add_vline(x=dt, line_width=1, line_dash="solid", line_color="rgba(0,0,0,0.1)", row="all", col=1)
-        # fig.add_annotation(x=dt, y=1.03, yref="paper", text=emoji, showarrow=False, font=dict(size=16))
+        fig_candle.add_vline(x=dt, line_width=1, line_dash="solid", line_color="rgba(0,0,0,0.1)", row="all", col=1)
 
-add_recession(fig, dff, True)
+add_recession(fig_candle, dff, True)
 
-# Layout Update
-fig.update_layout(**BASE_LAYOUT, height=650, showlegend=True,
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor="rgba(0,0,0,0)"))
+# [기존 코드 로직 적용] 유동성 Y축 범위 계산 (Scale Logic)
+liq_min_val = liq_series.min()
+liq_max_val = liq_series.max()
+liq_y_min = liq_min_val * 0.85
+liq_y_max = liq_y_min + (liq_max_val - liq_y_min) / 0.6
 
-# Axes
-fig.update_xaxes(ax(), row=1, col=1)
-fig.update_xaxes(ax(), row=2, col=1)
-fig.update_yaxes(ax(dict(ticklabelposition="outside", automargin=True)), row=1, col=1, secondary_y=False)
-fig.update_yaxes(ax(dict(showgrid=False, tickfont=dict(color=C["liq"]), ticklabelposition="inside")), row=1, col=1, secondary_y=True)
-fig.update_yaxes(ax(dict(tickformat=".2s")), row=2, col=1)
+# 레이아웃 업데이트 (Modern Styling + 기존 Layout 구조)
+fig_candle.update_layout(
+    **BASE_LAYOUT, height=700, showlegend=True,
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor="rgba(0,0,0,0)"),
+    xaxis_rangeslider_visible=False,
+)
+fig_candle.update_xaxes(ax(), row=1, col=1)
+fig_candle.update_xaxes(ax(), row=2, col=1)
+fig_candle.update_yaxes(ax(dict(ticklabelposition="outside", automargin=True)), row=1, col=1, secondary_y=False)
 
-st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-st.markdown('</div>', unsafe_allow_html=True) # End chart wrapper
+# ★ 중요: 기존 코드의 Y축 스케일링 로직 적용 (range 설정)
+fig_candle.update_yaxes(ax(dict(
+    showgrid=False, range=[liq_y_min, liq_y_max], 
+    ticklabelposition="inside", tickfont=dict(color=C["liq"]), automargin=True
+)), row=1, col=1, secondary_y=True)
+
+fig_candle.update_yaxes(ax(dict(tickformat=".2s", fixedrange=True)), row=2, col=1)
+
+st.plotly_chart(fig_candle, use_container_width=True, config={"displayModeBar": False})
+st.markdown('</div>', unsafe_allow_html=True)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 11. Timeline (Clean Track Style)
+# 11. Timeline (Modern Track)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 st.write("")
 st.markdown(f"""
@@ -803,11 +696,9 @@ for date_str, title, desc, emoji, direction in reversed(ALL_EVENTS):
     st.markdown(f"""
     <div class="tl-card">
         <div class="tl-dot"></div>
-        <div class="tl-head">
-            <div class="tl-date">{date_str}</div>
-            <div class="tl-tag {tag_cls}">{emoji} {direction.upper()}</div>
-        </div>
-        <div style="font-weight:700; margin-bottom:4px;">{title}</div>
+        <div class="tl-tag {tag_cls}">{emoji} {direction.upper()}</div>
+        <div class="tl-date">{date_str}</div>
+        <div style="font-weight:700; margin-bottom:4px; font-size:0.95rem;">{title}</div>
         <div style="font-size:0.85rem; color:#6B7280;">{desc}</div>
     </div>
     """, unsafe_allow_html=True)
