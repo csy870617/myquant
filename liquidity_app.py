@@ -784,7 +784,7 @@ with brief_container:
     )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 차트
+# 차트 (네이버 금융 스타일 수정 버전)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 dff = df[df.index >= pd.to_datetime(cutoff)].copy()
 
@@ -805,58 +805,67 @@ elif tf == "월봉":
 else:
     ohlc_chart = ohlc_filtered.copy()
 
-# 이동평균 (20, 60, 120 — 봉 주기에 맞게)
+# 이동평균 (5, 20, 60, 120 - 네이버 기본 설정과 유사하게)
+# 사용자가 보던 20, 60, 120은 유지하되 스타일 개선
 for ma_len in [20, 60, 120]:
     ohlc_chart[f"MA{ma_len}"] = ohlc_chart["Close"].rolling(ma_len).mean()
 
-# 거래량 색상
-vol_colors = ["#ef4444" if c < o else "#10b981"
+# ── 네이버 스타일 색상 정의 ──
+NAV_UP = "#ec4846"   # 네이버 상승 빨강
+NAV_DN = "#3870c9"   # 네이버 하락 파랑
+NAV_BG = "#ffffff"   # 순수 흰색 배경
+NAV_GRID = "#f0f0f0" # 아주 연한 그리드
+
+# 거래량 색상 (전일 종가 대비가 아닌 양봉/음봉 기준)
+vol_colors = [NAV_UP if c >= o else NAV_DN
               for o, c in zip(ohlc_chart["Open"], ohlc_chart["Close"])]
 
+# 차트 서브플롯 생성 (공유 X축)
 fig_candle = make_subplots(
-    rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03,
-    row_heights=[0.75, 0.25],
-    specs=[[{"secondary_y": True}], [{"secondary_y": False}]])
+    rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.00, # 간격 없앰
+    row_heights=[0.8, 0.2], # 캔들 영역 확대
+    specs=[[{"secondary_y": True}], [{"secondary_y": False}]]
+)
 
-# 유동성 (우측 Y축, 배경 영역) — 캔들 뒤에 깔기
+# [1] 유동성 (우측 Y축, 배경 영역) - 최대한 방해되지 않게 은은하게
 liq_series = dff["Liq_MA"].dropna()
 liq_hover_fmt = f"%{{y:,.0f}}{CC['liq_suffix']}<extra>{CC['liq_label']}</extra>"
 fig_candle.add_trace(go.Scatter(
-    x=liq_series.index, y=liq_series, name=f"{CC['liq_label']} ({CC['liq_unit']})",
-    fill="tozeroy", fillcolor="rgba(59,130,246,0.07)",
-    line=dict(color="rgba(59,130,246,0.4)", width=1.5),
+    x=liq_series.index, y=liq_series, name=f"{CC['liq_label']}",
+    fill="tozeroy", fillcolor="rgba(100, 116, 139, 0.07)", # 아주 연한 회색/블루 톤
+    line=dict(color="rgba(100, 116, 139, 0.3)", width=1),
     hovertemplate=liq_hover_fmt
 ), row=1, col=1, secondary_y=True)
 
-# 캔들스틱
+# [2] 캔들스틱 (네이버 스타일)
 fig_candle.add_trace(go.Candlestick(
     x=ohlc_chart.index,
     open=ohlc_chart["Open"], high=ohlc_chart["High"],
     low=ohlc_chart["Low"], close=ohlc_chart["Close"],
-    increasing_line_color="#10b981", increasing_fillcolor="#10b981",
-    decreasing_line_color="#ef4444", decreasing_fillcolor="#ef4444",
+    increasing_line_color=NAV_UP, increasing_fillcolor=NAV_UP,
+    decreasing_line_color=NAV_DN, decreasing_fillcolor=NAV_DN,
     name=idx_name, whiskerwidth=0.4,
 ), row=1, col=1)
 
-# 이동평균선
-ma_colors = {"MA20": "#f59e0b", "MA60": "#3b82f6", "MA120": "#8b5cf6"}
+# [3] 이동평균선 (선명하고 얇게)
+ma_colors = {"MA20": "#eca61d", "MA60": "#34a853", "MA120": "#888888"} # 황금색, 녹색, 회색
 for ma_name, ma_color in ma_colors.items():
     s = ohlc_chart[ma_name].dropna()
     if len(s) > 0:
         fig_candle.add_trace(go.Scatter(
             x=s.index, y=s, name=ma_name,
-            line=dict(color=ma_color, width=1.3),
+            line=dict(color=ma_color, width=1.2),
             hovertemplate="%{y:,.0f}<extra>" + ma_name + "</extra>"
         ), row=1, col=1)
 
-# 거래량
+# [4] 거래량 (하단)
 fig_candle.add_trace(go.Bar(
     x=ohlc_chart.index, y=ohlc_chart["Volume"], name="거래량",
-    marker_color=vol_colors, opacity=0.5, showlegend=False,
+    marker_color=vol_colors, opacity=1.0, showlegend=False,
     hovertemplate="%{y:,.0f}<extra>Volume</extra>"
 ), row=2, col=1)
 
-# 이벤트 표시 (봉 주기에 따라 최소 간격 조절)
+# [5] 이벤트 표시 (기존 로직 유지하되 스타일 미세 조정)
 if show_events:
     gap_map = {"일봉": 14, "주봉": 45, "월봉": 120}
     min_gap = gap_map.get(tf, 30)
@@ -868,58 +877,79 @@ if show_events:
         if prev_dt and (dt - prev_dt).days < min_gap:
             continue
         prev_dt = dt
+        # 세로선 (점선)
         fig_candle.add_vline(x=dt, line_width=1, line_dash="dot",
-            line_color=C["event"], row="all", col=1)
-        clr = "#10b981" if direction == "up" else "#ef4444"
-        fig_candle.add_annotation(x=dt, y=1.04, yref="paper",
-            text=f"{emoji} {title}", showarrow=False,
-            font=dict(size=11, color=clr), textangle=-38, xanchor="left")
+            line_color="#999999", row="all", col=1)
+        # 텍스트
+        clr = NAV_UP if direction == "up" else NAV_DN
+        fig_candle.add_annotation(x=dt, y=1.02, yref="paper",
+            text=f"{emoji}", showarrow=False,
+            font=dict(size=14), xanchor="center")
 
 # 리세션 음영
 add_recession(fig_candle, dff, True)
 
-# ★ 수정: 범례를 차트 안쪽 좌측 상단으로 이동, 배경 추가
-fig_candle.update_layout(
-    **BASE_LAYOUT, height=700, showlegend=True,
+# ── 레이아웃 설정 (네이버 금융 모방) ──
+layout_config = dict(
+    plot_bgcolor=NAV_BG, paper_bgcolor=NAV_BG,
+    font=dict(family="Pretendard, sans-serif", color="#333", size=12),
+    hovermode="x unified", # X축 기준 통합 툴팁 (십자선 효과)
+    margin=dict(t=40, b=0, l=10, r=10), # 여백 최소화
+    dragmode="pan",
+    
+    # 범례 설정 (좌측 상단, 투명)
     legend=dict(
-        yanchor="top", y=0.99,
-        xanchor="left", x=0.01,
-        font=dict(size=11),
-        bgcolor="rgba(255,255,255,0.5)", # 반투명 배경
-        bordercolor="rgba(0,0,0,0.1)",
-        borderwidth=1
+        orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0,
+        font=dict(size=11), bgcolor="rgba(255,255,255,0)", itemclick="toggleothers"
     ),
-    xaxis_rangeslider_visible=False,
+    
+    # 하단 레인지 슬라이더 (네이버 미니맵)
+    xaxis=dict(
+        rangeslider=dict(visible=True, thickness=0.08, bgcolor="#f9f9f9"),
+        type="date",
+        showgrid=True, gridcolor=NAV_GRID, gridwidth=1,
+        showline=True, linecolor="#ddd", linewidth=1,
+        showspikes=True, spikethickness=1, spikecolor="#888", spikemode="across", # 십자선
+    ),
+    xaxis2=dict(
+        showgrid=True, gridcolor=NAV_GRID,
+        showspikes=True, spikethickness=1, spikecolor="#888", spikemode="across",
+    ),
+    
+    # Y축 설정
+    yaxis=dict(
+        showgrid=True, gridcolor=NAV_GRID, gridwidth=1,
+        zeroline=False, showline=True, linecolor="#ddd",
+        tickformat=",", # 천단위 콤마
+        side="right", # 가격 축을 우측으로 (국내 HTS/네이버 스타일)
+        showspikes=True, spikethickness=1, spikecolor="#888", spikemode="across", # 십자선
+        autorange=True, fixedrange=False
+    ),
+    yaxis2=dict( # 거래량
+        showgrid=False, zeroline=False, 
+        side="right", showticklabels=False, # 거래량 수치 숨김 (깔끔하게)
+        fixedrange=True
+    ),
+    yaxis3=dict( # 유동성 (Overlay)
+        overlaying="y", side="left", # 유동성은 좌측 축 사용
+        showgrid=False, showticklabels=True,
+        tickfont=dict(color="#94a3b8", size=10),
+        range=[liq_series.min()*0.9, liq_series.max()*1.1] # 범위 자동 조정
+    )
 )
-fig_candle.update_xaxes(ax(), row=1, col=1)
-fig_candle.update_xaxes(ax(), row=2, col=1)
-# ★ 수정: 차트 축 라벨 텍스트 제거 (title=None) + 바깥쪽 배치(outside) + 자동 마진
-fig_candle.update_yaxes(ax(dict(title=None, ticklabelposition="outside", automargin=True)), row=1, col=1, secondary_y=False)
-# 유동성 Y축 범위 계산: 데이터 하한 기반으로 동적 설정
-liq_min_val = liq_series.min()
-liq_max_val = liq_series.max()
-liq_y_min = liq_min_val * 0.85  # 하한 15% 여유
-liq_y_max = liq_y_min + (liq_max_val - liq_y_min) / 0.6  # 변동 시각화 확대
 
-# ★ 수정: 차트 축 라벨 텍스트 제거 (title=None) + 바깥쪽 배치(outside) + 자동 마진
-fig_candle.update_yaxes(ax(dict(title=None,
-    title_font=dict(color="#3b82f6"), tickfont=dict(color="#3b82f6", size=10),
-    showgrid=False, range=[liq_y_min, liq_y_max], ticklabelposition="outside", automargin=True)), row=1, col=1, secondary_y=True)
-# ★ 수정: 차트 축 라벨 텍스트 제거 (title=None) + 바깥쪽 배치(outside) + 자동 마진
-fig_candle.update_yaxes(ax(dict(title=None, tickformat=".2s", fixedrange=True, ticklabelposition="outside", automargin=True)), row=2, col=1)
+fig_candle.update_layout(**layout_config)
+
+# 유동성 축 라벨 숨기기 (옵션) - 원하시면 showticklabels=True로 변경
+fig_candle.update_yaxes(visible=False, row=1, col=1, secondary_y=True) 
+# 유동성 데이터는 보이지만 축 숫자는 복잡함을 피하기 위해 숨김 처리 (툴팁으로 확인 가능)
 
 st.plotly_chart(fig_candle, use_container_width=True,
                 config={"scrollZoom": True,
-                        "displayModeBar": True,
-                        "modeBarButtonsToRemove": [
-                            "select2d", "lasso2d", "autoScale2d",
-                            "hoverClosestCartesian", "hoverCompareCartesian",
-                            "toggleSpikelines",
-                        ],
-                        "displaylogo": False,
+                        "displayModeBar": False, # 툴바 숨김 (네이버처럼 깔끔하게)
                         "responsive": True})
 
-# 모바일 핀치 줌 강제 활성화 (JS 주입)
+# 모바일 핀치 줌 강제 활성화
 st.markdown("""
 <script>
 document.querySelectorAll('.js-plotly-plot').forEach(function(plot) {
@@ -929,29 +959,20 @@ document.querySelectorAll('.js-plotly-plot').forEach(function(plot) {
 </script>
 """, unsafe_allow_html=True)
 
-# 최근 캔들 요약
+# 최근 캔들 요약 (심플하게 변경)
 if len(ohlc_chart) >= 2:
     last = ohlc_chart.iloc[-1]
     prev = ohlc_chart.iloc[-2]
     chg = (last["Close"] - prev["Close"]) / prev["Close"] * 100
-    chg_cls = "up" if chg >= 0 else "down"
+    chg_color = NAV_UP if chg >= 0 else NAV_DN
     chg_arrow = "▲" if chg >= 0 else "▼"
-    chg_color = "green" if chg >= 0 else "red"
+    
     st.markdown(
-        f'<div class="guide-box">'
-        f'🕯️ <strong>최근 {tf}:</strong> '
-        f'시 <strong>{last["Open"]:,.0f}</strong> · '
-        f'고 <strong>{last["High"]:,.0f}</strong> · '
-        f'저 <strong>{last["Low"]:,.0f}</strong> · '
-        f'종 <strong>{last["Close"]:,.0f}</strong> '
-        f'<span style="color:var(--accent-{chg_color})">{chg_arrow} {chg:+.2f}%</span>'
-        f'<br>'
-        f'이평선: <span style="color:#f59e0b">MA20</span> · '
-        f'<span style="color:#3b82f6">MA60</span> · '
-        f'<span style="color:#8b5cf6">MA120</span> · '
-        f'<span style="color:rgba(59,130,246,0.6)">파란 영역</span> = {CC["liq_label"]}'
+        f'<div style="text-align:right; font-size:0.9rem; margin-top:-10px; color:#666;">'
+        f'종가 <strong>{last["Close"]:,.2f}</strong> '
+        f'<span style="color:{chg_color}; font-weight:bold;">{chg_arrow} {abs(chg):.2f}%</span>'
         f'</div>',
-        unsafe_allow_html=True,
+        unsafe_allow_html=True
     )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
