@@ -41,7 +41,7 @@ st.markdown(
 )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# CSS (툴바 오버레이 & 여백 최적화)
+# CSS (툴바 가시성 확보 및 스타일링)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 st.markdown("""
 <style>
@@ -183,22 +183,24 @@ footer { display: none !important; }
     width: 100% !important;
 }
 
-/* ★ 툴바(Modebar) 오버레이: 차트 우측 하단 내부에 배치 */
+/* ★ 툴바(Modebar) 오버레이 설정 (잘 보이게 수정) */
 .modebar { 
-    opacity: 0.2 !important; /* 평소엔 아주 희미하게 */
+    display: flex !important;
+    opacity: 0.8 !important; /* 기본적으로 잘 보이게 설정 */
     position: absolute !important;
-    bottom: 5px !important;     
-    right: 5px !important;      
+    bottom: 10px !important;     
+    right: 10px !important;      
     top: auto !important;
     left: auto !important;    
-    background: rgba(255, 255, 255, 0.6) !important; /* 배경 반투명 */
-    border-radius: 4px;
-    padding: 2px !important;
-    z-index: 1000 !important;
+    background: rgba(255, 255, 255, 0.8) !important;
+    border-radius: 6px;
+    padding: 4px !important;
+    z-index: 9999 !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
 }
-.modebar:hover { opacity: 1 !important; background: rgba(255, 255, 255, 0.95) !important; }
-.modebar-btn { font-size: 14px !important; }
-.modebar-group { padding: 0 2px !important; }
+.modebar:hover { opacity: 1 !important; background: #fff !important; }
+.modebar-btn { font-size: 15px !important; }
+.modebar-group { padding: 0 4px !important; }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    모바일 반응형 (≤768px)
@@ -271,7 +273,7 @@ footer { display: none !important; }
     .app-footer { font-size: 0.68rem; padding: 0.8rem 0.5rem; }
 
     /* Plotly 모드바 모바일: 터치하기 좋게 */
-    .modebar { opacity: 0.6 !important; bottom: 2px !important; right: 2px !important; }
+    .modebar { opacity: 0.9 !important; bottom: 5px !important; right: 5px !important; }
     .modebar-btn { font-size: 18px !important; padding: 6px !important; }
 }
 
