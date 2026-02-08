@@ -398,15 +398,16 @@ MARKET_PIVOTS_KR = [
 ]
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 국가별 설정
+# 국가별 설정 (금리 데이터 FRED 코드 추가)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 COUNTRY_CONFIG = {
     "🇺🇸 미국": {
         "indices": {"NASDAQ": "^IXIC", "S&P 500": "^GSPC", "다우존스": "^DJI"},
         "default_idx": 0,
-        "fred_liq": "BOGMBASE",      # 본원통화 (Billions of USD — FRED 단위 그대로)
-        "fred_rec": "USREC",          # 경기침체 지표
-        "liq_divisor": 1,             # 이미 $B 단위
+        "fred_liq": "BOGMBASE",      # 본원통화
+        "fred_rate": "FEDFUNDS",     # 실효 연방기금금리 (Effective Federal Funds Rate)
+        "fred_rec": "USREC",         # 경기침체 지표
+        "liq_divisor": 1,
         "liq_label": "본원통화",
         "liq_unit": "$B",
         "liq_prefix": "$",
@@ -417,9 +418,10 @@ COUNTRY_CONFIG = {
     "🇰🇷 대한민국": {
         "indices": {"KOSPI": "^KS11", "KOSDAQ": "^KQ11"},
         "default_idx": 0,
-        "fred_liq": "BOGMBASE",        # Fed 본원통화 = 글로벌 유동성 지표
-        "fred_rec": "USREC",           # 미국 경기침체 (글로벌 영향)
-        "liq_divisor": 1,              # 이미 $B 단위
+        "fred_liq": "BOGMBASE",        # 글로벌 유동성 (Fed 데이터 대용)
+        "fred_rate": "INTDSRKRM193N",  # 한국 중앙은행 할인율 (기준금리 대용)
+        "fred_rec": "USREC",
+        "liq_divisor": 1,
         "liq_label": "글로벌 유동성 (Fed)",
         "liq_unit": "$B",
         "liq_prefix": "$",
@@ -429,25 +431,36 @@ COUNTRY_CONFIG = {
     },
 }
 
-
 @st.cache_data(ttl=3600, show_spinner=False)
-def load_data(ticker, fred_liq, fred_rec, liq_divisor):
+def load_data(ticker, fred_liq, fred_rate, fred_rec, liq_divisor):
+    """
+    FRED(유동성, 금리, 경기침체) 및 yfinance(지수) 데이터를 로드하고 통합합니다.
+    """
     try:
         end_dt = datetime.now()
         fetch_start = end_dt - timedelta(days=365 * 14)
 
-        # [A] FRED 데이터 (유동성)
+        # [A] FRED 데이터 (유동성 + 금리 + 경기침체) 통합 로드
         try:
-            fred_codes = [fred_liq]
+            fred_codes = [fred_liq, fred_rate]
             if fred_rec:
                 fred_codes.append(fred_rec)
+            
+            # 데이터를 한 번에 가져와서 결측치를 앞 방향으로 채움(ffill)
             fred_df = web.DataReader(fred_codes, "fred", fetch_start, end_dt).ffill()
+            
+            # 컬럼 이름 재설정
+            cols = ["Liquidity", "Rate"]
             if fred_rec:
-                fred_df.columns = ["Liquidity", "Recession"]
+                cols.append("Recession")
+                fred_df.columns = cols
             else:
-                fred_df.columns = ["Liquidity"]
+                fred_df.columns = cols
                 fred_df["Recession"] = 0
+            
+            # 유동성 단위 조정
             fred_df["Liquidity"] = fred_df["Liquidity"] / liq_divisor
+            
         except Exception as e:
             st.error(f"FRED 데이터 로드 실패: {e}")
             return None, None
@@ -461,6 +474,7 @@ def load_data(ticker, fred_liq, fred_rec, liq_divisor):
                 st.error("지수 데이터를 가져오지 못했습니다. (데이터가 비어있음)")
                 return None, None
             
+            # MultiIndex 처리 (yfinance 버전 대응)
             if isinstance(yf_data.columns, pd.MultiIndex):
                 idx_close = yf_data['Close'][[ticker]].rename(columns={ticker: 'SP500'})
                 ohlc = yf_data[[('Open',ticker),('High',ticker),('Low',ticker),('Close',ticker),('Volume',ticker)]].copy()
@@ -473,7 +487,8 @@ def load_data(ticker, fred_liq, fred_rec, liq_divisor):
             st.error(f"지수 데이터 로드 실패 (yfinance): {e}")
             return None, None
 
-        # [C] 데이터 통합 및 가공
+        # [C] 데이터 통합 및 기술 지표 계산
+        # 인덱스(날짜) 기준으로 FRED 데이터와 주가 데이터 병합
         df = pd.concat([fred_df, idx_close], axis=1).ffill()
         
         if 'SP500' in df.columns:
@@ -481,26 +496,33 @@ def load_data(ticker, fred_liq, fred_rec, liq_divisor):
             df["SP_MA"] = df["SP500"].rolling(10).mean()
             df["Liq_YoY"] = df["Liquidity"].pct_change(252) * 100
             df["SP_YoY"] = df["SP500"].pct_change(252) * 100
+            
+            # 3개월(약 63영업일) 유동성 변화율 추가 (Daily Brief 분석용)
+            df["Liq_3m_Chg"] = df["Liquidity"].pct_change(63) * 100
         else:
             st.error("데이터 통합 과정에서 주가 컬럼을 생성하지 못했습니다.")
             return None, None
 
+        # 정규화 (0-100 스케일링)
         for c in ["Liquidity", "SP500"]:
             s = df[c].dropna()
             if len(s) > 0:
                 df[f"{c}_norm"] = (df[c] - s.min()) / (s.max() - s.min()) * 100
         
+        # 유동성과 지수 간 90일 상관계수
         df["Corr_90d"] = df["Liquidity"].rolling(90).corr(df["SP500"])
 
+        # 최근 12년치 데이터로 필터링하여 반환
         cut = end_dt - timedelta(days=365 * 12)
         df = df[df.index >= pd.to_datetime(cut)]
         ohlc = ohlc[ohlc.index >= pd.to_datetime(cut)]
+        
         return df.dropna(subset=["SP500"]), ohlc.dropna(subset=["Close"])
         
     except Exception as e:
         st.error(f"⚠️ 시스템 오류: {str(e)}")
         return None, None
-        
+                
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 차트 헬퍼
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
