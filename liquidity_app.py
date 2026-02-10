@@ -25,12 +25,12 @@ except Exception:
     pass  # 파일이 없거나 구버전 Streamlit일 경우 무시
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 자동 새로고침 (PST 09:00/18:00 + KST 09:00/18:00 = 하루 4회)
+# 자동 새로고침 (PST 07:00/16:00 = 하루 2회)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def get_next_refresh():
-    """다음 새로고침 시각까지 남은 초 계산 (PST 09/18 + KST 09/18)"""
+    """다음 새로고침 시각까지 남은 초 계산 (PST 07:00/16:00)"""
     utc_now = datetime.now(ZoneInfo("UTC"))
-    utc_hours = [0, 2, 9, 17]
+    utc_hours = [0, 15]  # PST 16:00→UTC 00:00, PST 07:00→UTC 15:00
 
     targets = []
     for h in utc_hours:
