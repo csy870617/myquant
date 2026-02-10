@@ -455,20 +455,38 @@ def load_data(ticker, fred_liq, fred_rec, liq_divisor):
         # [B] 주가 지수 데이터 (yfinance - OHLC)
         try:
             import yfinance as yf
-            yf_data = yf.download(ticker, start=fetch_start, end=end_dt, progress=False)
-            
+
+            # 방법 1: yf.download (auto_adjust=False, multi_level_index=False)
+            try:
+                yf_data = yf.download(
+                    ticker, start=fetch_start, end=end_dt,
+                    progress=False, auto_adjust=False, multi_level_index=False
+                )
+            except TypeError:
+                # 구버전 yfinance: multi_level_index 미지원
+                yf_data = yf.download(
+                    ticker, start=fetch_start, end=end_dt,
+                    progress=False, auto_adjust=False
+                )
+
+            # MultiIndex 컬럼이 남아있으면 평탄화
+            if isinstance(yf_data.columns, pd.MultiIndex):
+                yf_data.columns = [col[0] for col in yf_data.columns]
+
+            # 방법 1 실패 시 → 방법 2: yf.Ticker().history() 폴백
+            if yf_data.empty:
+                t = yf.Ticker(ticker)
+                yf_data = t.history(start=fetch_start, end=end_dt, auto_adjust=False)
+                if isinstance(yf_data.columns, pd.MultiIndex):
+                    yf_data.columns = [col[0] for col in yf_data.columns]
+
             if yf_data.empty:
                 st.error("지수 데이터를 가져오지 못했습니다. (데이터가 비어있음)")
                 return None, None
-            
-            if isinstance(yf_data.columns, pd.MultiIndex):
-                idx_close = yf_data['Close'][[ticker]].rename(columns={ticker: 'SP500'})
-                ohlc = yf_data[[('Open',ticker),('High',ticker),('Low',ticker),('Close',ticker),('Volume',ticker)]].copy()
-                ohlc.columns = ['Open','High','Low','Close','Volume']
-            else:
-                idx_close = yf_data[['Close']].rename(columns={'Close': 'SP500'})
-                ohlc = yf_data[['Open','High','Low','Close','Volume']].copy()
-                
+
+            idx_close = yf_data[['Close']].rename(columns={'Close': 'SP500'})
+            ohlc = yf_data[['Open','High','Low','Close','Volume']].copy()
+
         except Exception as e:
             st.error(f"지수 데이터 로드 실패 (yfinance): {e}")
             return None, None
