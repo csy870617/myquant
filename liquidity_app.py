@@ -451,7 +451,7 @@ COUNTRY_CONFIG = {
 def load_data(ticker, fred_liq, fred_rec, liq_divisor):
     try:
         end_dt = datetime.now()
-        fetch_start = end_dt - timedelta(days=365 * 14)
+        fetch_start = end_dt - timedelta(days=365 * 27)
 
         # [A] FRED 데이터 (유동성)
         try:
@@ -527,7 +527,7 @@ def load_data(ticker, fred_liq, fred_rec, liq_divisor):
         
         df["Corr_90d"] = df["Liquidity"].rolling(90).corr(df["SP500"])
 
-        cut = end_dt - timedelta(days=365 * 12)
+        cut = end_dt - timedelta(days=365 * 27)
         df = df[df.index >= pd.to_datetime(cut)]
         ohlc = ohlc[ohlc.index >= pd.to_datetime(cut)]
         return df.dropna(subset=["SP500"]), ohlc.dropna(subset=["Close"])
@@ -643,11 +643,11 @@ with ctrl2:
 with ctrl3:
     period = st.selectbox("📅 기간", ["3년", "5년", "7년", "10년", "전체"], index=3)
 with ctrl4:
-    tf = st.selectbox("🕯️ 봉", ["일봉", "주봉", "월봉"], index=2, key="candle_tf")
+    tf = st.selectbox("🕯️ 봉", ["일봉", "주봉", "월봉"], index=1, key="candle_tf")
 with ctrl5:
-    show_events = st.toggle("📌 이벤트", value=True)
+    show_events = st.toggle("📌 이벤트", value=False)
 
-period_map = {"3년": 3, "5년": 5, "7년": 7, "10년": 10, "전체": 12}
+period_map = {"3년": 3, "5년": 5, "7년": 7, "10년": 10, "전체": 27}
 period_years = period_map[period]
 cutoff = datetime.now() - timedelta(days=365 * period_years)
 
