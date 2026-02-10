@@ -1032,84 +1032,109 @@ else:
 for ma_len in [20, 60, 120]:
     ohlc_chart[f"MA{ma_len}"] = ohlc_chart["Close"].rolling(ma_len).mean()
 
-# ── 데이터를 JSON으로 변환 ──
-def to_lw_time(dt_index):
-    """datetime → lightweight-charts 형식 (YYYY-MM-DD 문자열)"""
-    return dt_index.strftime('%Y-%m-%d')
+# ── 유동성 데이터를 캔들 타임프레임에 맞춰 리샘플 ──
+liq_series_raw = dff["Liq_MA"].dropna()
+if tf == "주봉":
+    liq_resampled = liq_series_raw.resample("W").last().dropna()
+elif tf == "월봉":
+    liq_resampled = liq_series_raw.resample("ME").last().dropna()
+else:
+    liq_resampled = liq_series_raw.copy()
 
-# 캔들 데이터
+# ━━━━ 핵심: 순차 인덱스 방식으로 시간축 균일화 ━━━━
+# lightweight-charts는 날짜 간격에 비례해 봉 간격을 배치하므로
+# 주봉(7일)·월봉(30일)은 일봉 대비 넓게 퍼짐.
+# → 모든 봉을 연속 "가상 일봉 날짜"로 매핑하여 균일 간격 보장.
+candle_dates = ohlc_chart.index.tolist()           # 실제 날짜 (화면 표시용)
+n_candles = len(candle_dates)
+
+# 가상 날짜: 2000-01-03(월요일)부터 영업일 연속 배정
+virtual_base = pd.Timestamp("2000-01-03")
+virtual_dates = pd.bdate_range(start=virtual_base, periods=n_candles)  # 영업일
+real_to_virtual = {candle_dates[i]: virtual_dates[i] for i in range(n_candles)}
+virtual_to_real = {virtual_dates[i]: candle_dates[i] for i in range(n_candles)}
+
+def to_lw_time(dt):
+    return dt.strftime('%Y-%m-%d')
+
+# ── 캔들 데이터 (가상 날짜 사용) ──
 candle_data = []
-for dt, row in ohlc_chart.iterrows():
+for i, (dt, row) in enumerate(ohlc_chart.iterrows()):
     candle_data.append({
-        "time": to_lw_time(dt),
+        "time": to_lw_time(virtual_dates[i]),
         "open": round(float(row["Open"]), 2),
         "high": round(float(row["High"]), 2),
         "low": round(float(row["Low"]), 2),
         "close": round(float(row["Close"]), 2),
     })
 
-# 거래량 데이터
+# ── 거래량 데이터 ──
 volume_data = []
-for dt, row in ohlc_chart.iterrows():
+for i, (dt, row) in enumerate(ohlc_chart.iterrows()):
     is_up = row["Close"] >= row["Open"]
     volume_data.append({
-        "time": to_lw_time(dt),
+        "time": to_lw_time(virtual_dates[i]),
         "value": float(row["Volume"]),
         "color": "rgba(16,185,129,0.4)" if is_up else "rgba(239,68,68,0.4)",
     })
 
-# 이동평균 데이터
+# ── 이동평균 데이터 ──
 ma_data = {}
 for ma_len in [20, 60, 120]:
     col = f"MA{ma_len}"
-    s = ohlc_chart[col].dropna()
-    ma_data[col] = [{"time": to_lw_time(dt), "value": round(float(v), 2)} for dt, v in s.items()]
+    items = []
+    for i, (dt, row) in enumerate(ohlc_chart.iterrows()):
+        v = row.get(col)
+        if pd.notna(v):
+            items.append({"time": to_lw_time(virtual_dates[i]), "value": round(float(v), 2)})
+    ma_data[col] = items
 
-# 유동성 데이터
-liq_series = dff["Liq_MA"].dropna()
-liq_data = [{"time": to_lw_time(dt), "value": round(float(v), 2)} for dt, v in liq_series.items()]
+# ── 유동성 데이터 (캔들 날짜에 스냅) ──
+liq_data = []
+for i, cdt in enumerate(candle_dates):
+    # 캔들 날짜 이하에서 가장 가까운 유동성 값
+    mask = liq_resampled.index <= cdt
+    if mask.any():
+        val = float(liq_resampled[mask].iloc[-1])
+        liq_data.append({"time": to_lw_time(virtual_dates[i]), "value": round(val, 2)})
 
-# 이벤트 마커 데이터
+# ── 이벤트 마커 (캔들 날짜에 정확히 스냅) ──
+def snap_to_candle(event_dt, candle_index):
+    """이벤트 날짜를 가장 가까운 캔들 날짜로 스냅"""
+    diffs = abs(candle_index - event_dt)
+    nearest_idx = diffs.argmin()
+    return nearest_idx
+
 marker_data = []
 if show_events:
-    gap_map = {"일봉": 14, "주봉": 45, "월봉": 120}
-    min_gap = gap_map.get(tf, 30)
-    prev_dt = None
+    gap_map = {"일봉": 10, "주봉": 4, "월봉": 2}
+    min_gap_bars = gap_map.get(tf, 5)  # 봉 개수 기준 최소 간격
+    prev_bar_idx = -999
     for date_str, title, desc, emoji, direction in ALL_EVENTS:
-        dt = pd.to_datetime(date_str)
-        if dt < ohlc_chart.index.min() or dt > ohlc_chart.index.max():
+        evt_dt = pd.to_datetime(date_str)
+        if evt_dt < candle_dates[0] - timedelta(days=35) or evt_dt > candle_dates[-1] + timedelta(days=35):
             continue
-        if prev_dt and (dt - prev_dt).days < min_gap:
+        bar_idx = snap_to_candle(evt_dt, ohlc_chart.index)
+        if abs(bar_idx - prev_bar_idx) < min_gap_bars:
             continue
-        prev_dt = dt
-        marker_data.append({
-            "time": date_str,
-            "position": "aboveBar" if direction == "up" else "belowBar",
-            "color": "#10b981" if direction == "up" else "#ef4444",
-            "shape": "arrowUp" if direction == "up" else "arrowDown",
-            "text": f"{emoji} {title}",
-        })
+        prev_bar_idx = bar_idx
+        if 0 <= bar_idx < n_candles:
+            marker_data.append({
+                "time": to_lw_time(virtual_dates[bar_idx]),
+                "position": "aboveBar" if direction == "up" else "belowBar",
+                "color": "#10b981" if direction == "up" else "#ef4444",
+                "shape": "arrowUp" if direction == "up" else "arrowDown",
+                "text": f"{emoji} {title}",
+            })
 
-# 리세션 구간 데이터
-recession_ranges = []
-if "Recession" in dff.columns:
-    rec_idx = dff[dff["Recession"] == 1].index
-    if not rec_idx.empty:
-        start = rec_idx[0]
-        for i in range(1, len(rec_idx)):
-            if (rec_idx[i] - rec_idx[i - 1]).days > 5:
-                recession_ranges.append({"start": to_lw_time(start), "end": to_lw_time(rec_idx[i - 1])})
-                start = rec_idx[i]
-        recession_ranges.append({"start": to_lw_time(start), "end": to_lw_time(rec_idx[-1])})
+# ── 실제↔가상 날짜 매핑 (JS에서 tooltip용) ──
+date_label_map = {}
+for i in range(n_candles):
+    vk = to_lw_time(virtual_dates[i])
+    rk = candle_dates[i].strftime('%Y-%m-%d')
+    date_label_map[vk] = rk
 
-# 최신 캔들 정보
-last_candle = ohlc_chart.iloc[-1] if len(ohlc_chart) > 0 else None
-prev_candle = ohlc_chart.iloc[-2] if len(ohlc_chart) > 1 else None
-last_chg = 0
-if last_candle is not None and prev_candle is not None:
-    last_chg = (last_candle["Close"] - prev_candle["Close"]) / prev_candle["Close"] * 100
-
-# JSON 직렬화
+# ── JSON 직렬화 ──
 candle_json = json.dumps(candle_data)
 volume_json = json.dumps(volume_data)
 ma20_json = json.dumps(ma_data.get("MA20", []))
@@ -1117,11 +1142,13 @@ ma60_json = json.dumps(ma_data.get("MA60", []))
 ma120_json = json.dumps(ma_data.get("MA120", []))
 liq_json = json.dumps(liq_data)
 marker_json = json.dumps(marker_data)
-recession_json = json.dumps(recession_ranges)
+date_map_json = json.dumps(date_label_map)
 
+# 차트 설정
 chart_height = 650
 liq_label = CC["liq_label"]
 liq_suffix = CC["liq_suffix"]
+default_bar_spacing = 6  # 모든 타임프레임 동일 (균일 간격이므로)
 
 # ── Lightweight Charts HTML ──
 lw_html = f"""
@@ -1132,7 +1159,7 @@ lw_html = f"""
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <style>
   * {{ margin:0; padding:0; box-sizing:border-box; }}
-  body {{ font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#f8fafc; overflow:hidden; }}
+  body {{ font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: transparent; overflow:hidden; }}
 
   #chart-wrapper {{
     position: relative;
@@ -1144,36 +1171,34 @@ lw_html = f"""
     overflow: hidden;
   }}
 
-  /* ── 상단 정보 오버레이 ── */
+  /* ── 상단 OHLC 정보 오버레이 ── */
   #info-overlay {{
     position: absolute;
-    top: 12px; left: 14px;
+    top: 10px; left: 14px;
     z-index: 10;
     pointer-events: none;
-    font-family: 'IBM Plex Mono', 'Pretendard', monospace;
+    font-family: 'SF Mono', 'Cascadia Code', 'IBM Plex Mono', 'Consolas', monospace;
   }}
   #info-title {{
     font-size: 13px; font-weight: 700;
     color: #1e293b;
-    margin-bottom: 4px;
+    margin-bottom: 3px;
     display: flex; align-items: center; gap: 8px;
   }}
   #info-title .idx-name {{ font-family: 'Pretendard', sans-serif; }}
   #info-title .idx-tf {{ font-size: 11px; color: #94a3b8; font-weight: 500; }}
+  #info-title .idx-date {{ font-size: 11px; color: #64748b; font-weight: 500; }}
   #info-ohlc {{
-    display: flex; flex-wrap: wrap; gap: 4px 12px;
+    display: flex; flex-wrap: wrap; gap: 3px 10px;
     font-size: 11.5px; color: #64748b;
-    line-height: 1.6;
+    line-height: 1.55;
   }}
   #info-ohlc .label {{ color: #94a3b8; font-weight: 500; }}
   #info-ohlc .val {{ font-weight: 600; }}
-  #info-ohlc .up {{ color: #10b981; }}
-  #info-ohlc .down {{ color: #ef4444; }}
 
-  /* ── MA 범례 ── */
   #ma-legend {{
     display: flex; gap: 10px;
-    font-size: 11px; margin-top: 2px;
+    font-size: 10.5px; margin-top: 2px;
   }}
   #ma-legend span {{ display:flex; align-items:center; gap:3px; }}
   #ma-legend .dot {{ width:8px; height:3px; border-radius:2px; display:inline-block; }}
@@ -1182,26 +1207,25 @@ lw_html = f"""
   .ma120-dot {{ background:#8b5cf6; }}
   .liq-dot {{ background:rgba(59,130,246,0.5); width:12px!important; height:8px!important; border-radius:3px!important; }}
 
-  /* ── 하단 거래량 라벨 ── */
   #vol-label {{
     position: absolute;
-    bottom: 8px; left: 14px;
+    bottom: 6px; left: 14px;
     font-size: 10px; color: #94a3b8;
     z-index: 10; pointer-events: none;
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: 'SF Mono', monospace;
   }}
 
-  /* ── 모바일 대응 ── */
+  /* ── 모바일 ── */
   @media (max-width: 768px) {{
-    #info-overlay {{ top: 8px; left: 10px; }}
+    #info-overlay {{ top: 6px; left: 8px; }}
     #info-title {{ font-size: 12px; }}
-    #info-ohlc {{ font-size: 10.5px; gap: 3px 8px; }}
-    #ma-legend {{ font-size: 10px; gap: 6px; }}
-    #vol-label {{ font-size: 9px; }}
+    #info-ohlc {{ font-size: 10px; gap: 2px 7px; }}
+    #ma-legend {{ font-size: 9.5px; gap: 5px; }}
+    #vol-label {{ font-size: 8.5px; }}
   }}
   @media (max-width: 480px) {{
-    #info-ohlc {{ font-size: 9.5px; gap: 2px 6px; }}
-    #ma-legend {{ font-size: 9px; gap: 4px; flex-wrap: wrap; }}
+    #info-ohlc {{ font-size: 9px; gap: 1px 5px; }}
+    #ma-legend {{ font-size: 8.5px; gap: 3px; flex-wrap: wrap; }}
   }}
 </style>
 </head>
@@ -1211,6 +1235,7 @@ lw_html = f"""
     <div id="info-title">
       <span class="idx-name">{idx_name}</span>
       <span class="idx-tf">{tf}</span>
+      <span class="idx-date" id="v-date"></span>
     </div>
     <div id="info-ohlc">
       <span><span class="label">시</span> <span class="val" id="v-open">-</span></span>
@@ -1239,6 +1264,9 @@ lw_html = f"""
   container.style.width = '100%';
   container.style.height = '{chart_height}px';
 
+  // 실제 날짜 매핑
+  const dateMap = {date_map_json};
+
   // ── 차트 생성 ──
   const chart = LightweightCharts.createChart(container, {{
     width: wrapper.clientWidth,
@@ -1246,42 +1274,52 @@ lw_html = f"""
     layout: {{
       background: {{ type: 'solid', color: '#ffffff' }},
       textColor: '#64748b',
-      fontFamily: "'IBM Plex Mono', 'Pretendard', monospace",
+      fontFamily: "'SF Mono', 'Consolas', monospace",
       fontSize: 11,
     }},
     grid: {{
-      vertLines: {{ color: 'rgba(226,232,240,0.5)', style: 1 }},
-      horzLines: {{ color: 'rgba(226,232,240,0.5)', style: 1 }},
+      vertLines: {{ color: 'rgba(226,232,240,0.4)', style: 1 }},
+      horzLines: {{ color: 'rgba(226,232,240,0.4)', style: 1 }},
     }},
     crosshair: {{
       mode: LightweightCharts.CrosshairMode.Normal,
       vertLine: {{
-        width: 1,
-        color: 'rgba(100,116,139,0.3)',
+        width: 1, color: 'rgba(100,116,139,0.35)',
         style: LightweightCharts.LineStyle.Dashed,
-        labelBackgroundColor: '#475569',
+        labelVisible: false,
       }},
       horzLine: {{
-        width: 1,
-        color: 'rgba(100,116,139,0.3)',
+        width: 1, color: 'rgba(100,116,139,0.35)',
         style: LightweightCharts.LineStyle.Dashed,
         labelBackgroundColor: '#475569',
       }},
     }},
     rightPriceScale: {{
       borderColor: '#e2e8f0',
-      scaleMargins: {{ top: 0.12, bottom: 0.28 }},
+      scaleMargins: {{ top: 0.08, bottom: 0.25 }},
       autoScale: true,
     }},
     timeScale: {{
       borderColor: '#e2e8f0',
       timeVisible: false,
       secondsVisible: false,
-      rightOffset: 5,
-      barSpacing: 6,
-      minBarSpacing: 2,
+      rightOffset: 3,
+      barSpacing: {default_bar_spacing},
+      minBarSpacing: 0.5,
       fixLeftEdge: false,
       fixRightEdge: false,
+      tickMarkFormatter: function(time) {{
+        // 가상날짜 → 실제날짜 변환하여 표시
+        const key = time.year + '-' +
+          String(time.month).padStart(2,'0') + '-' +
+          String(time.day).padStart(2,'0');
+        const real = dateMap[key];
+        if (real) {{
+          const parts = real.split('-');
+          return parts[0].slice(2) + '/' + parts[1];
+        }}
+        return '';
+      }},
     }},
     handleScroll: {{
       mouseWheel: true,
@@ -1293,6 +1331,14 @@ lw_html = f"""
       axisPressedMouseMove: true,
       mouseWheel: true,
       pinch: true,
+    }},
+    localization: {{
+      timeFormatter: function(time) {{
+        const key = time.year + '-' +
+          String(time.month).padStart(2,'0') + '-' +
+          String(time.day).padStart(2,'0');
+        return dateMap[key] || key;
+      }},
     }},
   }});
 
@@ -1309,7 +1355,7 @@ lw_html = f"""
   const candleData = {candle_json};
   candleSeries.setData(candleData);
 
-  // 마커 (이벤트)
+  // 마커 (이벤트) — 캔들 날짜에 정확히 스냅됨
   const markers = {marker_json};
   if (markers.length > 0) {{
     candleSeries.setMarkers(markers);
@@ -1341,7 +1387,7 @@ lw_html = f"""
   const liqSeries = chart.addAreaSeries({{
     topColor: 'rgba(59,130,246,0.12)',
     bottomColor: 'rgba(59,130,246,0.01)',
-    lineColor: 'rgba(59,130,246,0.4)',
+    lineColor: 'rgba(59,130,246,0.45)',
     lineWidth: 1.5,
     priceScaleId: 'liq',
     priceLineVisible: false,
@@ -1350,13 +1396,13 @@ lw_html = f"""
     priceFormat: {{ type: 'custom', formatter: (p) => p.toLocaleString() + '{liq_suffix}' }},
   }});
   chart.priceScale('liq').applyOptions({{
-    scaleMargins: {{ top: 0.55, bottom: 0.28 }},
+    scaleMargins: {{ top: 0.50, bottom: 0.25 }},
     borderVisible: false,
     visible: false,
   }});
   liqSeries.setData({liq_json});
 
-  // ── 거래량 히스토그램 (하단 price scale) ──
+  // ── 거래량 히스토그램 ──
   const volumeSeries = chart.addHistogramSeries({{
     priceFormat: {{ type: 'volume' }},
     priceScaleId: 'vol',
@@ -1370,11 +1416,7 @@ lw_html = f"""
   }});
   volumeSeries.setData({volume_json});
 
-  // ── 리세션 음영 ──
-  const recessions = {recession_json};
-  // Recession shading is handled via background markers if needed
-
-  // ── 크로스헤어 정보 업데이트 ──
+  // ── 크로스헤어 실시간 정보 ──
   const fmt = (n) => n != null ? n.toLocaleString(undefined, {{maximumFractionDigits:0}}) : '-';
   const fmtVol = (n) => {{
     if (n == null) return '-';
@@ -1384,7 +1426,6 @@ lw_html = f"""
     return n.toFixed(0);
   }};
 
-  // 데이터를 time 기준 맵으로 변환 (빠른 조회)
   const ma20Map = new Map({ma20_json}.map(d => [d.time, d.value]));
   const ma60Map = new Map({ma60_json}.map(d => [d.time, d.value]));
   const ma120Map = new Map({ma120_json}.map(d => [d.time, d.value]));
@@ -1392,17 +1433,27 @@ lw_html = f"""
   const volMap = new Map({volume_json}.map(d => [d.time, d.value]));
   const candleMap = new Map(candleData.map(d => [d.time, d]));
 
-  // 마지막 데이터로 초기화
+  function timeToKey(t) {{
+    if (typeof t === 'string') return t;
+    if (t && t.year) return t.year + '-' + String(t.month).padStart(2,'0') + '-' + String(t.day).padStart(2,'0');
+    return null;
+  }}
+
   function updateInfo(param) {{
-    let t, candle, vol;
+    let t;
     if (param && param.time) {{
-      t = param.time;
+      t = timeToKey(param.time);
     }} else if (candleData.length > 0) {{
       t = candleData[candleData.length - 1].time;
     }} else {{ return; }}
+    if (!t) return;
 
-    candle = candleMap.get(t);
+    const candle = candleMap.get(t);
     if (!candle) return;
+
+    // 실제 날짜 표시
+    const realDate = dateMap[t] || t;
+    document.getElementById('v-date').textContent = realDate;
 
     const o = candle.open, h = candle.high, l = candle.low, c = candle.close;
     const isUp = c >= o;
@@ -1426,17 +1477,12 @@ lw_html = f"""
       document.getElementById('v-chg').style.color = chg >= 0 ? '#10b981' : '#ef4444';
     }}
 
-    // 거래량
     const v = volMap.get(t);
     document.getElementById('v-vol').textContent = fmtVol(v);
 
-    // 유동성 (가장 가까운 값 찾기)
     const liqVal = liqMap.get(t);
-    if (liqVal) {{
-      document.getElementById('v-liq').textContent = fmt(liqVal) + '{liq_suffix}';
-    }}
+    document.getElementById('v-liq').textContent = liqVal ? fmt(liqVal) + '{liq_suffix}' : '-';
 
-    // MA
     const m20 = ma20Map.get(t);
     document.getElementById('v-ma20').textContent = 'MA20 ' + (m20 ? fmt(m20) : '-');
     const m60 = ma60Map.get(t);
@@ -1446,19 +1492,17 @@ lw_html = f"""
   }}
 
   chart.subscribeCrosshairMove(updateInfo);
-  // 초기값 설정
   updateInfo(null);
 
   // ── 반응형 리사이즈 ──
   const resizeObserver = new ResizeObserver(entries => {{
     for (const entry of entries) {{
-      const {{ width }} = entry.contentRect;
-      chart.applyOptions({{ width: width }});
+      chart.applyOptions({{ width: entry.contentRect.width }});
     }}
   }});
   resizeObserver.observe(wrapper);
 
-  // 최초 전체 보기
+  // 초기 뷰: 전체 데이터 표시
   chart.timeScale().fitContent();
 }})();
 </script>
