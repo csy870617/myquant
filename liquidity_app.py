@@ -1631,7 +1631,7 @@ st.markdown(tl_html + "</div>", unsafe_allow_html=True)
 st.markdown(
     f'<div class="app-footer">'
     f'데이터: {CC["data_src"]} · 업데이트: {df.index.max().strftime("%Y-%m-%d")}'
-    f'<br>자동 갱신 4회/일 (PST·KST 09/18시) · 본 페이지는 투자 조언이 아닙니다'
+    f'<br>자동 갱신 2회/일 (PST 07/16시 · KST 00/09시) · 본 페이지는 투자 조언이 아닙니다'
     f'</div>',
     unsafe_allow_html=True,
 )
