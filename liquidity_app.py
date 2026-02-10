@@ -350,7 +350,15 @@ MARKET_PIVOTS = [
     ("2025-10-29", "QT 종료 발표",           "12/1부터 대차대조표 축소 중단",                       "🛑", "up"),
     ("2025-12-11", "RMP 국채매입 재개",       "준비금 관리 매입 개시 → 유동성 확장 전환",              "💰", "up"),
     # 2026
+    ("2026-01-28", "FOMC 금리 동결",          "3.50-3.75% 유지, 2명 반대(인하 주장) → 연내 1~2회 인하 전망",  "📌", "up"),
     ("2026-01-28", "S&P 7000 돌파",          "14개월 만에 +1,000pt, AI 슈퍼사이클 & OBBBA 효과",    "🏆", "up"),
+    ("2026-01-30", "케빈 워시 Fed 의장 지명",  "트럼프, 파월 후임으로 매파 성향 워시 지명 → 금·은 폭락, 달러 급등", "🦅", "down"),
+    ("2026-01-30", "귀금속 대폭락",           "은 -35%, 금 -12% 하루 최대 낙폭 → 위험자산 전면 매도",   "💎", "down"),
+    ("2026-02-02", "비트코인 $77K 급락",      "BTC 고점 대비 -40%, 레버리지 청산 $25억 → 크립토 윈터 우려", "₿", "down"),
+    ("2026-02-03", "트럼프-인도 관세 합의",    "인도 기본관세 25→18% 인하, 러시아산 원유 구매 중단 조건", "🇮🇳", "up"),
+    ("2026-02-05", "BTC $63K·은 재폭락",      "BTC -15% FTX 이후 최악, 은 추가 -17% → 소프트웨어주 -24% YTD", "⚡", "down"),
+    ("2026-02-06", "다우 50,000 돌파",        "기술주 반등 +2.2%, S&P +2.0% → 연초 대비 원점 회복",   "🎯", "up"),
+    ("2026-02-09", "일본 니케이 사상 최고",    "다카이치 총선 압승 → 니케이 57,650, 글로벌 위험선호 회복", "🇯🇵", "up"),
 ]
 
 MARKET_PIVOTS_KR = [
@@ -395,6 +403,13 @@ MARKET_PIVOTS_KR = [
     ("2025-04-09", "관세 90일 유예",          "한국 포함 유예 → KOSPI +5% 반등",                    "🕊️", "up"),
     ("2025-05-12", "미중 관세 합의",          "글로벌 무역 완화 → 한국 수출 수혜 기대",               "🤝", "up"),
     ("2025-06-03", "한은 기준금리 2.50% 인하", "경기 부양 위해 추가 인하 → 유동성 확대",              "✂️", "up"),
+    # 2026
+    ("2026-01-02", "KOSPI 4,300 신고가",      "신년 첫 거래일 +2.3%, 시총 3,500조 돌파 → 삼성·SK 주도",  "🏆", "up"),
+    ("2026-01-30", "워시 Fed 의장 지명 쇼크",  "매파 우려 → 귀금속·BTC 폭락, KOSPI 200 변동성 50 돌파", "🦅", "down"),
+    ("2026-02-02", "KOSPI -5.26% 급락",       "글로벌 위험자산 매도 → 사이드카 발동, 4,950선 이탈",     "⚡", "down"),
+    ("2026-02-03", "KOSPI +6.84% 역대급 반등", "바겐헌팅 + 삼성 HBM4 기대 → 5,288 사상 최고가",        "🔥", "up"),
+    ("2026-02-06", "KOSPI 5,089 조정",        "AI 수익성 우려 → 이틀 연속 하락, 외국인 순매도",         "📉", "down"),
+    ("2026-02-10", "KOSPI 5,300 회복",        "삼성 HBM4 양산·SK하이닉스 +6% → AI 랠리 재점화",       "📊", "up"),
 ]
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -715,72 +730,168 @@ with kpi_container:
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Daily Brief
+# Daily Brief (상세 버전)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 with brief_container:
     today_str = datetime.now().strftime("%Y년 %m월 %d일")
     liq_3m = df["Liquidity"].dropna()
     liq_3m_chg = ((liq_3m.iloc[-1] - liq_3m.iloc[-63]) / liq_3m.iloc[-63] * 100) if len(liq_3m) > 63 else 0
+    liq_6m = df["Liquidity"].dropna()
+    liq_6m_chg = ((liq_6m.iloc[-1] - liq_6m.iloc[-126]) / liq_6m.iloc[-126] * 100) if len(liq_6m) > 126 else 0
     sp_1m = df["SP500"].dropna()
     sp_1m_chg = ((sp_1m.iloc[-1] - sp_1m.iloc[-21]) / sp_1m.iloc[-21] * 100) if len(sp_1m) > 21 else 0
+    sp_3m = df["SP500"].dropna()
+    sp_3m_chg = ((sp_3m.iloc[-1] - sp_3m.iloc[-63]) / sp_3m.iloc[-63] * 100) if len(sp_3m) > 63 else 0
+    sp_1w = df["SP500"].dropna()
+    sp_1w_chg = ((sp_1w.iloc[-1] - sp_1w.iloc[-5]) / sp_1w.iloc[-5] * 100) if len(sp_1w) > 5 else 0
 
-    if corr_val > 0.5 and liq_3m_chg > 0:
-        signal_class, signal_text = "signal-bullish", "🟢 유동성 확장 + 강한 상관 → 주가 상승 지지"
-    elif corr_val < 0 or liq_3m_chg < -1:
-        signal_class, signal_text = "signal-bearish", "🔴 유동성 수축 또는 상관 이탈 → 경계 필요"
+    # 추가 지표: 유동성 모멘텀 (단기 vs 장기)
+    liq_1m_chg = ((liq_3m.iloc[-1] - liq_3m.iloc[-21]) / liq_3m.iloc[-21] * 100) if len(liq_3m) > 21 else 0
+
+    # 시그널 판정 (다층 분석)
+    bullish_count = 0
+    bearish_count = 0
+    if corr_val > 0.5: bullish_count += 1
+    elif corr_val < 0: bearish_count += 1
+    if liq_3m_chg > 0: bullish_count += 1
+    elif liq_3m_chg < -1: bearish_count += 1
+    if sp_1m_chg > 0: bullish_count += 1
+    elif sp_1m_chg < -3: bearish_count += 1
+    if liq_yoy > 0: bullish_count += 1
+    elif liq_yoy < -2: bearish_count += 1
+
+    if bullish_count >= 3:
+        signal_class, signal_text = "signal-bullish", "🟢 유동성 확장 + 강한 상관 + 시장 모멘텀 → 상승 추세 지지"
+    elif bearish_count >= 2:
+        signal_class, signal_text = "signal-bearish", "🔴 유동성 수축 또는 상관 이탈 → 하방 리스크 경계"
     else:
-        signal_class, signal_text = "signal-neutral", "🟡 혼합 시그널 → 방향성 주시"
+        signal_class, signal_text = "signal-neutral", "🟡 혼합 시그널 → 방향성 모색 중, 변동성 확대 주의"
 
     if country == "🇺🇸 미국":
         brief_policy = (
             '<strong>▎연준 정책 현황</strong><br>'
             '연방기금금리 <span class="hl">3.50–3.75%</span> 유지 (1/28 FOMC). '
-            'QT는 12/1에 공식 종료되었으며, 12/12부터 <strong>준비금 관리 매입(RMP)</strong>을 통해 국채 매입을 재개하여 '
-            '사실상 대차대조표 확장으로 전환했습니다. 파월 의장 임기 만료(5월)를 앞두고 '
-            '케빈 워시(Kevin Warsh)가 차기 의장으로 지명되었으며, '
-            '시장은 하반기 1~2회 추가 인하를 기대하고 있습니다.'
+            '만장일치가 아닌 10-2 표결로, <strong>미런·월러 이사가 25bp 인하를 주장</strong>하며 내부 균열이 확인되었습니다. '
+            '파월 의장은 기자회견에서 "현 정책이 유의하게 긴축적이라 보기 어렵다"고 발언, '
+            '데이터 의존적 접근을 재확인했습니다.<br><br>'
+            'QT는 12/1에 공식 종료되었고, 12/12부터 <strong>준비금 관리 매입(RMP)</strong>으로 국채 매입을 재개하여 '
+            '사실상 대차대조표 확장으로 전환했습니다. '
+            'NY연은 윌리엄스 총재는 "이는 정책 스탠스 변화가 아닌 충분한 준비금 유지를 위한 기술적 조치"라고 강조했으나, '
+            '시장은 유동성 공급 확대로 해석하고 있습니다.<br><br>'
+            '<strong>차기 의장 이슈:</strong> 파월 임기 만료(5/15)를 앞두고 트럼프 대통령이 '
+            '<strong>케빈 워시(Kevin Warsh)</strong>를 1/30 차기 의장으로 지명했습니다. '
+            '워시는 2008년 위기 당시 매파적 입장으로 알려져 있으나, 최근에는 AI 생산성 향상을 근거로 '
+            '금리 인하를 지지하는 방향으로 선회했습니다. '
+            '틸리스 상원의원이 파월 대상 DOJ 수사 해결 전까지 인준 반대를 선언하여 '
+            '상원 인준 과정에 불확실성이 존재합니다. '
+            '시장은 여름 이후 1~2회 추가 인하를 가격에 반영 중입니다.'
         )
         brief_liq = (
-            f'<strong>▎유동성 데이터</strong><br>'
-            f'본원통화 최신치 <span class="hl">{liq_display}</span> (YoY {liq_yoy:+.1f}%). '
-            f'3개월 변화율 <span class="hl">{liq_3m_chg:+.1f}%</span>. '
-            f'QT 종료와 RMP 개시로 유동성 바닥이 형성되었으며, 완만한 확장 추세에 진입했습니다.'
+            f'<strong>▎유동성 데이터 심층 분석</strong><br>'
+            f'본원통화 최신치 <span class="hl">{liq_display}</span> '
+            f'(YoY {liq_yoy:+.1f}%, 1개월 {liq_1m_chg:+.1f}%, 3개월 {liq_3m_chg:+.1f}%, 6개월 {liq_6m_chg:+.1f}%).<br><br>'
+            f'QT 종료(12/1)와 RMP 개시(12/12)로 유동성 바닥이 확인되었으며, '
+            f'완만한 확장 국면에 진입했습니다. '
+            f'12월 말 연말 자금수요에 대응하여 Standing Repo Facility에서 $746억이 공급된 후 '
+            f'1/5까지 전액 상환되어, 단기자금시장은 안정적으로 작동 중입니다.<br><br>'
+            f'<strong>핵심 포인트:</strong> 유동성 확장 속도가 2020-2021년 "무한 QE" 시기보다 '
+            f'현저히 느리므로, 과거와 같은 자산가격 급등보다는 점진적 상승을 예상합니다. '
+            f'RRP(역레포) 잔고 감소와 TGA(재무부 일반계좌) 변동이 단기 유동성의 핵심 변수입니다.'
         )
         brief_market = (
-            f'<strong>▎시장 반응</strong><br>'
-            f'{idx_name} <span class="hl">{sp_val:,.0f}</span> (1개월 {sp_1m_chg:+.1f}%, YoY {sp_yoy:+.1f}%). '
-            f'AI 슈퍼사이클과 OBBBA(감세 연장·R&D 비용처리) 재정부양이 주가를 지지하나, '
-            f'높은 밸류에이션(CAPE ~39배)과 시장 집중도 심화가 리스크입니다.'
+            f'<strong>▎시장 동향 & 섹터 분석</strong><br>'
+            f'{idx_name} <span class="hl">{sp_val:,.0f}</span> '
+            f'(1주 {sp_1w_chg:+.1f}%, 1개월 {sp_1m_chg:+.1f}%, 3개월 {sp_3m_chg:+.1f}%, YoY {sp_yoy:+.1f}%).<br><br>'
+            f'<strong>최근 주요 흐름:</strong><br>'
+            f'• 다우 50,000 역사적 돌파(2/6) → 경기순환주 로테이션 진행<br>'
+            f'• 등가중 S&P 500이 시총가중 S&P 대비 아웃퍼폼(+5% vs +2% YTD) → 랠리 저변 확대<br>'
+            f'• Mag7 실적 혼조: 구글·아마존 AI CapEx $185B·$200B 발표로 투자자 불안 가중<br>'
+            f'• 소프트웨어 섹터 -24% YTD: Anthropic Claude Cowork 등 AI 에이전트 위협으로 급락<br>'
+            f'• 비트코인 -50% (고점 $126K→$62K), 은 -40%, 금 -15% → 위험자산 전면 디레버리징<br><br>'
+            f'<strong>밸류에이션:</strong> S&P 500 선행 P/E 22.2배(5년 평균 20배), 중간선거 해 평균 -18% 조정 이력. '
+            f'AI 기업이익 성장(2026E +12%)이 고밸류를 지지하나, 집중도 리스크(상위 10종목 비중 35%+) 상존.'
         )
     else:  # 한국
         brief_policy = (
             '<strong>▎한국은행 통화정책 현황</strong><br>'
-            '기준금리 <span class="hl">2.50%</span> (2025/6 기준). '
-            '글로벌 긴축 완화 흐름에 맞춰 한은도 인하 기조를 유지하고 있으며, '
-            '원/달러 환율 안정과 가계부채 관리가 추가 인하의 핵심 변수입니다. '
-            '수출 회복과 반도체 업황 개선이 경기 지지 요인입니다.'
+            '기준금리 <span class="hl">2.50%</span> (2025/6 인하 이후 유지). '
+            '글로벌 긴축 완화 흐름에 맞춰 한은도 완화적 기조를 유지 중이며, '
+            '원/달러 환율 안정과 가계부채 관리가 추가 인하의 핵심 제약 요인입니다.<br><br>'
+            '<strong>글로벌 정책 영향:</strong> 미 연준의 케빈 워시 차기 의장 지명(1/30)이 '
+            '매파적으로 해석되며 달러 강세→원화 약세 압력이 가중되었습니다. '
+            '한은의 추가 인하 여력이 제한될 수 있으나, 내수 경기 둔화 시 '
+            '하반기 1회 추가 인하 가능성이 열려 있습니다.<br><br>'
+            '<strong>이재명 정부 정책:</strong> "KOSPI 5,000" 국정과제 목표가 조기 달성되었으며, '
+            '밸류업 프로그램 2.0, 공매도 재개 관리 등 자본시장 친화 정책이 지속되고 있습니다. '
+            '한미 관세 합의(2025년)로 수출 환경이 안정적이나, '
+            '신용거래융자 잔고 30.5조원(사상 최대)이 과열 시그널로 주시됩니다.'
         )
         brief_liq = (
-            f'<strong>▎유동성 데이터</strong><br>'
-            f'Fed 본원통화(글로벌 유동성 지표) 최신치 <span class="hl">{liq_display}</span> (YoY {liq_yoy:+.1f}%). '
-            f'3개월 변화율 <span class="hl">{liq_3m_chg:+.1f}%</span>. '
-            f'한국 증시는 미 달러 유동성에 높은 민감도를 보이며, Fed 정책 방향이 핵심 변수입니다.'
+            f'<strong>▎유동성 데이터 심층 분석</strong><br>'
+            f'Fed 본원통화(글로벌 유동성 지표) 최신치 <span class="hl">{liq_display}</span> '
+            f'(YoY {liq_yoy:+.1f}%, 1개월 {liq_1m_chg:+.1f}%, 3개월 {liq_3m_chg:+.1f}%, 6개월 {liq_6m_chg:+.1f}%).<br><br>'
+            f'한국 증시는 글로벌 달러 유동성에 높은 민감도를 보입니다. '
+            f'Fed의 QT 종료와 RMP 개시로 글로벌 유동성 바닥이 형성된 것은 '
+            f'신흥국 자금 흐름에 우호적입니다.<br><br>'
+            f'<strong>핵심 포인트:</strong> 외국인 순매수 복귀 여부와 원화 환율 안정이 '
+            f'한국 증시 유동성의 직접적 지표입니다. '
+            f'최근 기관·외국인의 반도체 섹터 집중 매수가 확인되며, '
+            f'연기금(NPS)의 환헤지 프로그램 재개 논의도 원화 안정에 긍정적입니다.'
         )
         brief_market = (
-            f'<strong>▎시장 반응</strong><br>'
-            f'{idx_name} <span class="hl">{sp_val:,.0f}</span> (1개월 {sp_1m_chg:+.1f}%, YoY {sp_yoy:+.1f}%). '
-            f'반도체 수출 호조와 AI 수혜 기대감이 시장을 지지하나, '
-            f'미중 관세 리스크와 원화 약세, 코리아 디스카운트가 지속적 부담입니다.'
+            f'<strong>▎시장 동향 & 섹터 분석</strong><br>'
+            f'{idx_name} <span class="hl">{sp_val:,.0f}</span> '
+            f'(1주 {sp_1w_chg:+.1f}%, 1개월 {sp_1m_chg:+.1f}%, 3개월 {sp_3m_chg:+.1f}%, YoY {sp_yoy:+.1f}%).<br><br>'
+            f'<strong>최근 주요 흐름:</strong><br>'
+            f'• KOSPI 5,300 사상 최고가 경신(2/10) → 2025년 저점 대비 +132% 상승<br>'
+            f'• 삼성전자 HBM4 양산 개시(2월) → NVIDIA 차세대 GPU 납품 확정, SK하이닉스 +6%<br>'
+            f'• 워시 지명 쇼크(1/30) → 하루 -5.26% 후 익일 +6.84% 역대급 V자 반등<br>'
+            f'• KOSPI 200 변동성지수 50 돌파 → 6년 래 최고, 신용융자 30.5조원 사상 최대<br>'
+            f'• 코리아 디스카운트 해소 진행: 시총 3,500조원 돌파, PBR 1.2배로 상승<br><br>'
+            f'<strong>리스크:</strong> RSI·스토캐스틱 과매수 구간 진입, 레버리지 과열 경고. '
+            f'단기 5,000선 지지 테스트 가능성 상존. 중국 제조업 PMI 둔화도 부담.'
         )
 
     brief_corr = (
         f'<strong>▎상관관계 진단</strong><br>'
         f'90일 롤링 상관계수 <span class="hl">{corr_val:.3f}</span>. '
-        + ('유동성과 주가가 강한 동행 관계를 유지 중입니다.' if corr_val > 0.5
-           else '유동성-주가 동조성이 약화된 구간입니다.' if corr_val > 0
-           else '음의 상관으로 전환된 특이 구간입니다.')
+        + ('유동성과 주가가 강한 동행 관계를 유지 중입니다. '
+           '이는 중앙은행 유동성 공급이 주가를 직접적으로 지지하는 "유동성 장세" 구간임을 의미합니다. '
+           '유동성 방향 전환 시 주가도 동반 조정될 수 있어 Fed 정책 변화에 민감하게 대응해야 합니다.'
+           if corr_val > 0.5
+           else '유동성-주가 동조성이 약화된 구간입니다. '
+                '기업실적, 지정학, 섹터 로테이션 등 유동성 외 변수가 주가를 주도하고 있어, '
+                '펀더멘털 분석의 비중을 높일 필요가 있습니다.'
+           if corr_val > 0
+           else '음의 상관으로 전환된 특이 구간입니다. '
+                '유동성이 증가하는데 주가가 하락하거나 그 반대 상황으로, '
+                '시장이 유동성 외 강력한 악재(지정학, 신용 이벤트 등)에 반응하고 있음을 시사합니다.')
     )
 
+    # ── 글로벌 크로스에셋 모니터 ──
+    if country == "🇺🇸 미국":
+        brief_cross = (
+            '<strong>▎글로벌 크로스에셋 모니터</strong><br>'
+            '• <strong>귀금속:</strong> 금 $4,850(-15% 고점 대비), 은 $64(-55% 고점 대비). '
+            '워시 지명 후 달러 강세에 따른 급락 후 변동성 극심. CME 증거금 인상 반복<br>'
+            '• <strong>크립토:</strong> BTC $69K(-45% 고점), ETH -55%. '
+            '"디지털 금" 내러티브 붕괴, ETF 자금유출 지속. 마이클 버리 "담보 사망 소용돌이" 경고<br>'
+            '• <strong>국채:</strong> 10년물 4.0% 부근. 약한 소매판매 → 금리인하 기대 2회 이상으로 상향<br>'
+            '• <strong>달러:</strong> DXY 강세. 워시 지명 + 관세 정책 → 신흥국 통화 압박<br>'
+            '• <strong>일본:</strong> 니케이 57,650 사상 최고. 다카이치 총선 압승 → "다카이치 트레이드" 가속'
+        )
+    else:
+        brief_cross = (
+            '<strong>▎글로벌 크로스에셋 모니터</strong><br>'
+            '• <strong>환율:</strong> 원/달러 1,350원대. 달러 강세 지속 중이나 NPS 환헤지 논의로 급등 제한<br>'
+            '• <strong>귀금속:</strong> 금 $4,850(-15% 고점 대비), 은 $64(-55%). '
+            '글로벌 위험자산 디레버리징 영향<br>'
+            '• <strong>크립토:</strong> BTC $69K(-45% 고점). 한국 개인투자자 손실 확대 우려<br>'
+            '• <strong>반도체:</strong> TSMC 1월 매출 호조 → 글로벌 AI 수요 건재 확인. 삼성 HBM4 양산이 핵심 촉매<br>'
+            '• <strong>일본:</strong> 니케이 57,650 사상 최고 → 아시아 증시 전반 위험선호 회복 중'
+        )
+
+    # 종합 시그널 생성
     st.markdown(
         f'<div class="report-box">'
         f'<div class="report-header">'
@@ -795,8 +906,102 @@ with brief_container:
         f'{brief_market}'
         f'<hr class="report-divider">'
         f'{brief_corr}'
+        f'<hr class="report-divider">'
+        f'{brief_cross}'
         f'</div>'
         f'<div class="report-signal {signal_class}">{signal_text}</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 투자 조언 (Investment Advice)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    # 동적 분석 기반 투자 전략 생성
+    if country == "🇺🇸 미국":
+        if bullish_count >= 3:
+            adv_stance = "비중 확대 (Overweight)"
+            adv_stance_color = "var(--accent-green)"
+            adv_icon = "🟢"
+        elif bearish_count >= 2:
+            adv_stance = "비중 축소 (Underweight)"
+            adv_stance_color = "var(--accent-red)"
+            adv_icon = "🔴"
+        else:
+            adv_stance = "중립 (Neutral)"
+            adv_stance_color = "var(--accent-amber)"
+            adv_icon = "🟡"
+
+        adv_body = (
+            f'<strong>▎포지션 전략: <span style="color:{adv_stance_color}">{adv_icon} {adv_stance}</span></strong><br>'
+            f'유동성 {liq_3m_chg:+.1f}%(3M), 상관계수 {corr_val:.2f}, 시장 모멘텀 {sp_1m_chg:+.1f}%(1M) 종합 판단.<br><br>'
+            f'<strong>▎섹터별 전략</strong><br>'
+            f'• <strong>AI/반도체(비중확대):</strong> NVIDIA·Broadcom 중심 AI CapEx 사이클 지속. '
+            f'다만 소프트웨어 섹터는 AI 에이전트 위협으로 약세 → 선별적 접근 필요<br>'
+            f'• <strong>경기순환주(비중확대):</strong> 다우 50K 돌파, 등가중 S&P 아웃퍼폼 → '
+            f'은행·산업재·헬스케어로 로테이션 진행 중<br>'
+            f'• <strong>소형주(관심):</strong> Russell 2000 YTD +3% S&P 아웃퍼폼. '
+            f'금리 인하 기대 + OBBBA 감세 수혜 → 하반기 추가 상승 여력<br>'
+            f'• <strong>방어주(일부 편입):</strong> 중간선거 해 평균 -18% 조정 이력. '
+            f'배당·유틸리티로 변동성 헤지 권장<br><br>'
+            f'<strong>▎리스크 관리</strong><br>'
+            f'• 워시 인준 불확실성: 틸리스 의원 반대 → 의장 공백 시 변동성 확대 가능<br>'
+            f'• 밸류에이션: 선행 P/E 22.2배, CAPE 39배 → 역사적 고점권. '
+            f'실적 미달 시 급격한 멀티플 수축 위험<br>'
+            f'• 크립토·귀금속 연쇄 청산: BTC -50%, 은 -55% → '
+            f'레버리지 해소가 주식시장으로 전이될 가능성 모니터링<br>'
+            f'• <strong>핵심 지지선:</strong> S&P 6,800 / 나스닥 22,000 이탈 시 추가 하방 열림'
+        )
+    else:  # 한국
+        if bullish_count >= 3:
+            adv_stance = "비중 확대 (Overweight)"
+            adv_stance_color = "var(--accent-green)"
+            adv_icon = "🟢"
+        elif bearish_count >= 2:
+            adv_stance = "비중 축소 (Underweight)"
+            adv_stance_color = "var(--accent-red)"
+            adv_icon = "🔴"
+        else:
+            adv_stance = "중립 (Neutral)"
+            adv_stance_color = "var(--accent-amber)"
+            adv_icon = "🟡"
+
+        adv_body = (
+            f'<strong>▎포지션 전략: <span style="color:{adv_stance_color}">{adv_icon} {adv_stance}</span></strong><br>'
+            f'글로벌 유동성 {liq_3m_chg:+.1f}%(3M), 상관계수 {corr_val:.2f}, 시장 모멘텀 {sp_1m_chg:+.1f}%(1M) 종합 판단.<br><br>'
+            f'<strong>▎섹터별 전략</strong><br>'
+            f'• <strong>반도체(핵심 비중확대):</strong> 삼성전자 HBM4 양산·NVIDIA 납품 확정, '
+            f'SK하이닉스 HBM3E 풀가동 → AI 메모리 슈퍼사이클의 최대 수혜<br>'
+            f'• <strong>방산·조선(비중확대):</strong> 한화에어로스페이스, HD현대중공업 등 '
+            f'글로벌 방산 수주 호조 지속. 트럼프 방위비 증액 기조 수혜<br>'
+            f'• <strong>2차전지(중립):</strong> 미국 IRA 보조금 불확실성, 중국 LFP 가격 경쟁 → '
+            f'LG에너지솔루션·삼성SDI 선별적 접근<br>'
+            f'• <strong>금융(비중확대):</strong> 밸류업 프로그램 수혜, 배당 확대 기조. '
+            f'저PBR 은행주 → KB금융·하나금융 관심<br><br>'
+            f'<strong>▎리스크 관리</strong><br>'
+            f'• 과열 경고: RSI 과매수, 신용융자 30.5조원 사상 최대 → 급락 시 반대매매 연쇄 위험<br>'
+            f'• 환율: 원/달러 1,350원대 → 워시 인준 시 달러 강세 심화 가능. 환헤지 고려<br>'
+            f'• 중국 경기: 제조업 PMI 둔화 → 한국 수출에 직접 영향<br>'
+            f'• <strong>핵심 지지선:</strong> KOSPI 5,000 심리적 지지 / 4,800 기술적 지지 이탈 시 추가 조정'
+        )
+
+    st.markdown(
+        f'<div class="report-box" style="background:linear-gradient(135deg, #fef3c7, #fef9c3); border-color:#fbbf24;">'
+        f'<div class="report-header">'
+        f'<span class="report-badge" style="background:#f59e0b;">Investment Advice</span>'
+        f'<span class="report-date">{today_str} 기준 · 유동성 데이터 기반 분석</span></div>'
+        f'<div class="report-title">💡 투자 전략 가이드</div>'
+        f'<div class="report-body">'
+        f'{adv_body}'
+        f'</div>'
+        f'<div style="margin-top:0.8rem; padding:8px 14px; background:rgba(245,158,11,0.08); '
+        f'border:1px solid rgba(245,158,11,0.2); border-radius:8px; '
+        f'font-size:0.78rem; color:var(--text-muted); line-height:1.6;">'
+        f'⚠️ 본 투자 조언은 유동성·상관관계·모멘텀 데이터에 기반한 정량적 분석이며, '
+        f'개별 종목 추천이 아닙니다. 투자 의사결정은 개인의 위험 허용 범위, 투자 목표, '
+        f'재무 상황을 종합적으로 고려하여 내려야 합니다. 필요 시 전문 재무상담사와 상의하세요.'
+        f'</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
