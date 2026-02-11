@@ -615,11 +615,504 @@ def load_data(ticker, fred_liq, fred_rec, liq_divisor):
         df = df[df.index >= pd.to_datetime(cut)]
         ohlc = ohlc[ohlc.index >= pd.to_datetime(cut)]
         return df.dropna(subset=["SP500"]), ohlc.dropna(subset=["Close"])
-        
+
     except Exception as e:
         st.error(f"⚠️ 시스템 오류: {str(e)}")
         return None, None
-        
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 크로스에셋 & 매크로 데이터 (Daily Brief / Investment Advice 용)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_cross_asset_data():
+    """금, 은, BTC, ETH, 10Y 국채, DXY, 니케이, 원/달러 등 크로스에셋 실시간 데이터"""
+    import yfinance as yf
+    end_dt = datetime.now()
+    start_6m = end_dt - timedelta(days=180)
+    start_1y = end_dt - timedelta(days=365)
+
+    tickers = {
+        "gold": "GC=F",        # 금 선물
+        "silver": "SI=F",      # 은 선물
+        "btc": "BTC-USD",      # 비트코인
+        "eth": "ETH-USD",      # 이더리움
+        "us10y": "^TNX",       # 미국 10년물 금리
+        "dxy": "DX-F",         # 달러 인덱스 (선물)
+        "nikkei": "^N225",     # 니케이
+        "krw": "KRW=X",       # USD/KRW
+        "vix": "^VIX",         # VIX
+        "russell": "^RUT",     # Russell 2000
+        "dow": "^DJI",         # 다우존스
+        "kospi": "^KS11",      # KOSPI
+    }
+
+    result = {}
+    for name, ticker in tickers.items():
+        try:
+            data = yf.download(ticker, start=start_1y, end=end_dt, progress=False, auto_adjust=False)
+            if isinstance(data.columns, pd.MultiIndex):
+                data.columns = [col[0] for col in data.columns]
+            if not data.empty:
+                close = data["Close"].dropna()
+                current = close.iloc[-1]
+                # 고점 (1년 내)
+                high_1y = close.max()
+                # 변동률 계산
+                chg_1d = ((close.iloc[-1] / close.iloc[-2] - 1) * 100) if len(close) > 1 else 0
+                chg_1w = ((close.iloc[-1] / close.iloc[-5] - 1) * 100) if len(close) > 5 else 0
+                chg_1m = ((close.iloc[-1] / close.iloc[-21] - 1) * 100) if len(close) > 21 else 0
+                chg_3m = ((close.iloc[-1] / close.iloc[-63] - 1) * 100) if len(close) > 63 else 0
+                chg_ytd = 0
+                try:
+                    yr_start = close[close.index >= f"{end_dt.year}-01-01"]
+                    if len(yr_start) > 0:
+                        chg_ytd = ((close.iloc[-1] / yr_start.iloc[0] - 1) * 100)
+                except Exception:
+                    pass
+                chg_from_high = ((current / high_1y - 1) * 100) if high_1y > 0 else 0
+                result[name] = {
+                    "price": float(current), "high_1y": float(high_1y),
+                    "chg_1d": float(chg_1d), "chg_1w": float(chg_1w),
+                    "chg_1m": float(chg_1m), "chg_3m": float(chg_3m),
+                    "chg_ytd": float(chg_ytd), "chg_from_high": float(chg_from_high),
+                }
+        except Exception:
+            result[name] = None
+    return result
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_fed_funds_rate():
+    """FRED에서 실효 연방기금금리(DFF) 로드"""
+    try:
+        end_dt = datetime.now()
+        start_dt = end_dt - timedelta(days=365)
+        ff = web.DataReader("DFF", "fred", start_dt, end_dt).ffill()
+        current = ff.iloc[-1, 0]
+        prev_month = ff.iloc[-21, 0] if len(ff) > 21 else current
+        return {"current": float(current), "prev_month": float(prev_month)}
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_bok_base_rate():
+    """한국은행 기준금리 프록시 — FRED IRSTCI01KRM156N (한국 단기금리)"""
+    try:
+        end_dt = datetime.now()
+        start_dt = end_dt - timedelta(days=730)
+        kr = web.DataReader("IRSTCI01KRM156N", "fred", start_dt, end_dt).ffill()
+        current = kr.iloc[-1, 0]
+        return {"current": float(current)}
+    except Exception:
+        return None
+
+
+def _safe(d, key, sub="price", fallback=0):
+    """크로스에셋 딕셔너리에서 안전하게 값 추출"""
+    if d and d.get(key):
+        return d[key].get(sub, fallback)
+    return fallback
+
+
+def _chg_arrow(val):
+    """변동률에 따라 ▲/▼ 화살표 반환"""
+    return "▲" if val >= 0 else "▼"
+
+
+def _chg_color(val):
+    return "var(--accent-green)" if val >= 0 else "var(--accent-red)"
+
+
+def generate_dynamic_brief(country, df, liq_display, liq_yoy, liq_1m_chg, liq_3m_chg, liq_6m_chg,
+                           sp_val, sp_1w_chg, sp_1m_chg, sp_3m_chg, sp_yoy, corr_val,
+                           idx_name, cross, fed_rate, bok_rate):
+    """Daily Brief 전체를 실시간 데이터 기반으로 동적 생성"""
+
+    # ── 정책 현황 ──
+    if country == "🇺🇸 미국":
+        ff_str = f'{fed_rate["current"]:.2f}%' if fed_rate else "N/A"
+        ff_prev = fed_rate["prev_month"] if fed_rate else None
+        ff_direction = ""
+        if fed_rate and ff_prev is not None:
+            diff = fed_rate["current"] - ff_prev
+            if abs(diff) < 0.01:
+                ff_direction = "동결 기조를 유지하고 있습니다."
+            elif diff < 0:
+                ff_direction = f"전월 대비 {abs(diff):.2f}%p 인하되었습니다."
+            else:
+                ff_direction = f"전월 대비 {diff:.2f}%p 인상되었습니다."
+
+        us10y = _safe(cross, "us10y")
+        us10y_chg = _safe(cross, "us10y", "chg_1m")
+        bond_direction = "금리가 상승하여 긴축적 환경" if us10y_chg > 0 else "금리가 하락하여 완화적 환경"
+
+        brief_policy = (
+            f'<strong>▎연준 정책 현황</strong><br>'
+            f'실효 연방기금금리 <span class="hl">{ff_str}</span>. {ff_direction}<br><br>'
+            f'미국 10년물 국채금리는 <span class="hl">{us10y:.2f}%</span>로, '
+            f'최근 1개월 {us10y_chg:+.2f}%p 변동하며 {bond_direction}이 형성되고 있습니다.<br><br>'
+            f'유동성 지표(본원통화) YoY {liq_yoy:+.1f}% 변동은 '
+            + ("연준이 대차대조표를 확장하는 방향으로 움직이고 있음을 시사합니다. " if liq_yoy > 0
+               else "연준이 긴축 기조를 유지하며 유동성이 수축하고 있음을 시사합니다. " if liq_yoy < -2
+               else "연준의 대차대조표가 안정적으로 유지되고 있음을 시사합니다. ")
+            + '시장은 향후 금리 경로에 대해 데이터 의존적 접근을 이어가고 있습니다.'
+        )
+    else:
+        bok_str = f'{bok_rate["current"]:.2f}%' if bok_rate else "N/A"
+        krw_rate = _safe(cross, "krw")
+        krw_chg = _safe(cross, "krw", "chg_1m")
+        krw_direction = "원화가 약세" if krw_chg > 0 else "원화가 강세"
+
+        brief_policy = (
+            f'<strong>▎한국은행 통화정책 현황</strong><br>'
+            f'한국 단기금리 <span class="hl">{bok_str}</span>. '
+            f'글로벌 긴축 완화 흐름과 국내 경기를 감안한 정책 기조가 유지되고 있습니다.<br><br>'
+            f'<strong>환율:</strong> 원/달러 <span class="hl">{krw_rate:,.0f}원</span> '
+            f'(1개월 {krw_chg:+.1f}%). {krw_direction}를 보이고 있으며, '
+            + ("환율 안정과 가계부채 관리가 추가 인하의 핵심 제약 요인입니다." if krw_rate > 1350
+               else "환율 안정이 통화정책 운용에 여유를 주고 있습니다.")
+            + '<br><br>'
+            f'<strong>글로벌 영향:</strong> Fed 본원통화 YoY {liq_yoy:+.1f}% 변동은 '
+            f'글로벌 달러 유동성 환경이 '
+            + ("신흥국에 우호적으로 전환되고 있음을 의미합니다." if liq_yoy > 0
+               else "신흥국 자금 흐름에 부담으로 작용할 수 있음을 의미합니다." if liq_yoy < -2
+               else "안정적으로 유지되고 있음을 의미합니다.")
+        )
+
+    # ── 유동성 심층 분석 ──
+    liq_trend = ""
+    if liq_3m_chg > 1:
+        liq_trend = "유동성이 뚜렷한 확장 국면에 진입했습니다."
+    elif liq_3m_chg > 0:
+        liq_trend = "유동성이 완만한 확장 기조를 보이고 있습니다."
+    elif liq_3m_chg > -1:
+        liq_trend = "유동성이 보합 수준을 유지하고 있습니다."
+    else:
+        liq_trend = "유동성이 수축 국면에 진입하여 주의가 필요합니다."
+
+    liq_momentum = ""
+    if liq_1m_chg > liq_3m_chg / 3:
+        liq_momentum = "단기 유동성 모멘텀이 중기 추세를 상회하고 있어 확장 가속 신호입니다."
+    elif liq_1m_chg < 0 and liq_3m_chg > 0:
+        liq_momentum = "단기 유동성이 둔화되고 있으나 중기 추세는 여전히 양호합니다."
+    else:
+        liq_momentum = "단기와 중기 유동성 추세가 동조하고 있습니다."
+
+    if country == "🇺🇸 미국":
+        brief_liq = (
+            f'<strong>▎유동성 데이터 심층 분석</strong><br>'
+            f'본원통화 최신치 <span class="hl">{liq_display}</span> '
+            f'(YoY {liq_yoy:+.1f}%, 1개월 {liq_1m_chg:+.1f}%, 3개월 {liq_3m_chg:+.1f}%, 6개월 {liq_6m_chg:+.1f}%).<br><br>'
+            f'{liq_trend} {liq_momentum}<br><br>'
+            f'<strong>핵심 포인트:</strong> '
+            + (f'유동성 확장 속도(3개월 {liq_3m_chg:+.1f}%)가 '
+               + ("빠르게 진행되어 자산가격 상승을 강하게 지지합니다." if liq_3m_chg > 3
+                  else "완만하여 점진적 자산가격 상승을 예상합니다." if liq_3m_chg > 0
+                  else "정체/수축 중이어서 자산가격에 하방 압력이 작용할 수 있습니다."))
+        )
+    else:
+        brief_liq = (
+            f'<strong>▎유동성 데이터 심층 분석</strong><br>'
+            f'Fed 본원통화(글로벌 유동성 지표) 최신치 <span class="hl">{liq_display}</span> '
+            f'(YoY {liq_yoy:+.1f}%, 1개월 {liq_1m_chg:+.1f}%, 3개월 {liq_3m_chg:+.1f}%, 6개월 {liq_6m_chg:+.1f}%).<br><br>'
+            f'한국 증시는 글로벌 달러 유동성에 높은 민감도를 보입니다. '
+            f'{liq_trend}<br><br>'
+            f'<strong>핵심 포인트:</strong> 외국인 순매수 복귀 여부와 원화 환율 안정이 '
+            f'한국 증시 유동성의 직접적 지표입니다. '
+            + (f'현재 글로벌 유동성 확장(3개월 {liq_3m_chg:+.1f}%)은 신흥국 자금 유입에 우호적입니다.'
+               if liq_3m_chg > 0 else
+               f'현재 글로벌 유동성 수축(3개월 {liq_3m_chg:+.1f}%)은 신흥국 자금 유출 압력을 높입니다.')
+        )
+
+    # ── 시장 동향 ──
+    # 추가 지수 데이터
+    dow_price = _safe(cross, "dow")
+    dow_ytd = _safe(cross, "dow", "chg_ytd")
+    russell_price = _safe(cross, "russell")
+    russell_ytd = _safe(cross, "russell", "chg_ytd")
+    vix_price = _safe(cross, "vix")
+    vix_chg = _safe(cross, "vix", "chg_1m")
+    kospi_price = _safe(cross, "kospi")
+    kospi_ytd = _safe(cross, "kospi", "chg_ytd")
+
+    # 시장 레짐 판단
+    if sp_1m_chg > 5:
+        mkt_regime = "강한 상승 모멘텀이 확인됩니다."
+    elif sp_1m_chg > 0:
+        mkt_regime = "온건한 상승 흐름이 지속되고 있습니다."
+    elif sp_1m_chg > -3:
+        mkt_regime = "횡보 또는 약세 조정 국면입니다."
+    else:
+        mkt_regime = "뚜렷한 하락 압력이 존재합니다."
+
+    vix_comment = ""
+    if vix_price > 30:
+        vix_comment = f"VIX {vix_price:.1f}로 공포 구간에 진입하여 변동성 확대 주의가 필요합니다."
+    elif vix_price > 20:
+        vix_comment = f"VIX {vix_price:.1f}로 불안 구간에 위치하며 변동성이 확대되고 있습니다."
+    else:
+        vix_comment = f"VIX {vix_price:.1f}로 안정적인 시장 환경을 나타내고 있습니다."
+
+    if country == "🇺🇸 미국":
+        brief_market = (
+            f'<strong>▎시장 동향 & 섹터 분석</strong><br>'
+            f'{idx_name} <span class="hl">{sp_val:,.0f}</span> '
+            f'(1주 {sp_1w_chg:+.1f}%, 1개월 {sp_1m_chg:+.1f}%, 3개월 {sp_3m_chg:+.1f}%, YoY {sp_yoy:+.1f}%). '
+            f'{mkt_regime}<br><br>'
+            f'<strong>주요 지수 현황:</strong><br>'
+            f'• 다우존스: {dow_price:,.0f} (YTD {dow_ytd:+.1f}%)<br>'
+            f'• Russell 2000: {russell_price:,.0f} (YTD {russell_ytd:+.1f}%)<br>'
+            f'• {vix_comment}<br><br>'
+            + (f'<strong>시장 폭:</strong> Russell 2000 YTD({russell_ytd:+.1f}%)가 '
+               + (f'대형주 대비 아웃퍼폼 → 랠리 저변이 확대되고 있습니다.'
+                  if russell_ytd > dow_ytd else
+                  f'대형주 대비 언더퍼폼 → 대형주 쏠림이 지속되고 있습니다.'))
+        )
+    else:
+        nikkei_price = _safe(cross, "nikkei")
+        nikkei_ytd = _safe(cross, "nikkei", "chg_ytd")
+        brief_market = (
+            f'<strong>▎시장 동향 & 섹터 분석</strong><br>'
+            f'{idx_name} <span class="hl">{sp_val:,.0f}</span> '
+            f'(1주 {sp_1w_chg:+.1f}%, 1개월 {sp_1m_chg:+.1f}%, 3개월 {sp_3m_chg:+.1f}%, YoY {sp_yoy:+.1f}%). '
+            f'{mkt_regime}<br><br>'
+            f'<strong>아시아 주요 지수:</strong><br>'
+            f'• 니케이: {nikkei_price:,.0f} (YTD {nikkei_ytd:+.1f}%)<br>'
+            f'• {vix_comment}<br><br>'
+            f'<strong>시장 환경:</strong> '
+            + (f'글로벌 유동성 확장과 함께 한국 증시가 강세를 보이고 있습니다. '
+               if sp_1m_chg > 0 and liq_3m_chg > 0 else
+               f'글로벌 불확실성 속에서 한국 증시가 변동성을 보이고 있습니다. ')
+            + (f'원/달러 환율({_safe(cross, "krw"):,.0f}원)과 외국인 수급이 핵심 변수입니다.'
+               if cross and cross.get("krw") else
+               f'외국인 수급 방향이 핵심 변수입니다.')
+        )
+
+    # ── 상관관계 진단 ──
+    brief_corr = (
+        f'<strong>▎상관관계 진단</strong><br>'
+        f'90일 롤링 상관계수 <span class="hl">{corr_val:.3f}</span>. '
+        + ('유동성과 주가가 강한 동행 관계를 유지 중입니다. '
+           '이는 중앙은행 유동성 공급이 주가를 직접적으로 지지하는 "유동성 장세" 구간임을 의미합니다. '
+           '유동성 방향 전환 시 주가도 동반 조정될 수 있어 Fed 정책 변화에 민감하게 대응해야 합니다.'
+           if corr_val > 0.5
+           else '유동성-주가 동조성이 약화된 구간입니다. '
+                '기업실적, 지정학, 섹터 로테이션 등 유동성 외 변수가 주가를 주도하고 있어, '
+                '펀더멘털 분석의 비중을 높일 필요가 있습니다.'
+           if corr_val > 0
+           else '음의 상관으로 전환된 특이 구간입니다. '
+                '유동성이 증가하는데 주가가 하락하거나 그 반대 상황으로, '
+                '시장이 유동성 외 강력한 악재(지정학, 신용 이벤트 등)에 반응하고 있음을 시사합니다.')
+    )
+
+    # ── 글로벌 크로스에셋 모니터 (완전 동적) ──
+    gold_p = _safe(cross, "gold")
+    gold_chg = _safe(cross, "gold", "chg_1m")
+    gold_high = _safe(cross, "gold", "chg_from_high")
+    silver_p = _safe(cross, "silver")
+    silver_chg = _safe(cross, "silver", "chg_1m")
+    silver_high = _safe(cross, "silver", "chg_from_high")
+    btc_p = _safe(cross, "btc")
+    btc_chg = _safe(cross, "btc", "chg_1m")
+    btc_high = _safe(cross, "btc", "chg_from_high")
+    eth_p = _safe(cross, "eth")
+    eth_chg = _safe(cross, "eth", "chg_1m")
+    us10y_p = _safe(cross, "us10y")
+    us10y_chg = _safe(cross, "us10y", "chg_1m")
+    dxy_p = _safe(cross, "dxy")
+    dxy_chg = _safe(cross, "dxy", "chg_1m")
+    nikkei_p = _safe(cross, "nikkei")
+    nikkei_chg = _safe(cross, "nikkei", "chg_1m")
+
+    if country == "🇺🇸 미국":
+        brief_cross = (
+            f'<strong>▎글로벌 크로스에셋 모니터</strong><br>'
+            f'• <strong>귀금속:</strong> 금 ${gold_p:,.0f}(1M {gold_chg:+.1f}%, 고점 대비 {gold_high:+.1f}%), '
+            f'은 ${silver_p:,.1f}(1M {silver_chg:+.1f}%, 고점 대비 {silver_high:+.1f}%)<br>'
+            f'• <strong>크립토:</strong> BTC ${btc_p:,.0f}(1M {btc_chg:+.1f}%, 고점 대비 {btc_high:+.1f}%), '
+            f'ETH ${eth_p:,.0f}(1M {eth_chg:+.1f}%)<br>'
+            f'• <strong>국채:</strong> 10년물 {us10y_p:.2f}%(1M {us10y_chg:+.2f}%p)'
+            + (' → 금리 상승은 성장주에 부담' if us10y_chg > 0 else ' → 금리 하락은 성장주에 우호적') + '<br>'
+            f'• <strong>달러:</strong> DXY {dxy_p:.1f}(1M {dxy_chg:+.1f}%)'
+            + (' → 달러 강세는 신흥국·원자재에 압박' if dxy_chg > 0 else ' → 달러 약세는 위험자산에 우호적') + '<br>'
+            f'• <strong>일본:</strong> 니케이 {nikkei_p:,.0f}(1M {nikkei_chg:+.1f}%)'
+        )
+    else:
+        krw_p = _safe(cross, "krw")
+        krw_chg_1m = _safe(cross, "krw", "chg_1m")
+        brief_cross = (
+            f'<strong>▎글로벌 크로스에셋 모니터</strong><br>'
+            f'• <strong>환율:</strong> 원/달러 {krw_p:,.0f}원(1M {krw_chg_1m:+.1f}%)'
+            + (' → 원화 약세 지속, 외국인 매도 압력 주의' if krw_chg_1m > 1
+               else ' → 원화 강세 전환, 외국인 자금 유입 기대' if krw_chg_1m < -1
+               else ' → 환율 안정, 중립적 환경') + '<br>'
+            f'• <strong>귀금속:</strong> 금 ${gold_p:,.0f}(1M {gold_chg:+.1f}%, 고점 대비 {gold_high:+.1f}%), '
+            f'은 ${silver_p:,.1f}(1M {silver_chg:+.1f}%)<br>'
+            f'• <strong>크립토:</strong> BTC ${btc_p:,.0f}(1M {btc_chg:+.1f}%, 고점 대비 {btc_high:+.1f}%)<br>'
+            f'• <strong>반도체:</strong> 글로벌 AI 수요 동향 → '
+            + ('유동성 확장과 AI 투자 사이클이 반도체 섹터에 우호적입니다.' if liq_3m_chg > 0
+               else '유동성 수축 환경에서 반도체 밸류에이션 부담이 존재합니다.') + '<br>'
+            f'• <strong>일본:</strong> 니케이 {nikkei_p:,.0f}(1M {nikkei_chg:+.1f}%) → '
+            + ('아시아 증시 전반 위험선호 회복 중' if nikkei_chg > 0 else '아시아 증시 위험회피 흐름')
+        )
+
+    return brief_policy, brief_liq, brief_market, brief_corr, brief_cross
+
+
+def generate_dynamic_advice(country, bullish_count, bearish_count, liq_3m_chg, corr_val, sp_1m_chg,
+                            sp_yoy, liq_yoy, cross, sp_val, idx_name):
+    """Investment Advice를 실시간 데이터 기반으로 동적 생성"""
+
+    if bullish_count >= 3:
+        adv_stance = "비중 확대 (Overweight)"
+        adv_stance_color = "var(--accent-green)"
+        adv_icon = "🟢"
+    elif bearish_count >= 2:
+        adv_stance = "비중 축소 (Underweight)"
+        adv_stance_color = "var(--accent-red)"
+        adv_icon = "🔴"
+    else:
+        adv_stance = "중립 (Neutral)"
+        adv_stance_color = "var(--accent-amber)"
+        adv_icon = "🟡"
+
+    vix_price = _safe(cross, "vix")
+    us10y_p = _safe(cross, "us10y")
+    btc_chg = _safe(cross, "btc", "chg_1m")
+    gold_chg = _safe(cross, "gold", "chg_1m")
+    russell_ytd = _safe(cross, "russell", "chg_ytd")
+    dow_ytd = _safe(cross, "dow", "chg_ytd")
+    dxy_chg = _safe(cross, "dxy", "chg_1m")
+
+    if country == "🇺🇸 미국":
+        # 섹터 전략 - 시장 조건 기반 동적 생성
+        sector_ai = (
+            f'• <strong>AI/반도체('
+            + ("비중확대" if liq_3m_chg > 0 and sp_1m_chg > -3 else "중립") + '):</strong> '
+            + ('유동성 확장 + 시장 모멘텀이 AI CapEx 사이클을 지지합니다. ' if liq_3m_chg > 0 and sp_1m_chg > 0
+               else '유동성 환경은 우호적이나 시장 모멘텀 둔화로 선별적 접근이 필요합니다. ' if liq_3m_chg > 0
+               else '유동성 수축 환경에서 고밸류 성장주 부담이 존재합니다. ')
+            + (f'10년물 금리 {us10y_p:.2f}%' + ('는 성장주에 부담 요인입니다.' if us10y_p > 4.5 else '는 아직 성장주에 감내 가능한 수준입니다.') if cross and cross.get("us10y") else '')
+        )
+
+        sector_cyclical = (
+            f'• <strong>경기순환주('
+            + ("비중확대" if dow_ytd > 0 and liq_3m_chg > 0 else "중립") + '):</strong> '
+            + (f'다우 YTD {dow_ytd:+.1f}% → ' if cross and cross.get("dow") else '')
+            + ('경기순환주 로테이션이 진행 중입니다. 은행·산업재·헬스케어 관심.' if dow_ytd > 0
+               else '경기순환주 모멘텀이 약화되고 있어 방어적 접근이 필요합니다.')
+        )
+
+        sector_small = (
+            f'• <strong>소형주('
+            + ("관심" if russell_ytd > 0 else "중립") + '):</strong> '
+            + (f'Russell 2000 YTD {russell_ytd:+.1f}%. ' if cross and cross.get("russell") else '')
+            + ('금리 인하 기대 시 소형주 추가 상승 여력이 있습니다.' if us10y_p < 4.5 and russell_ytd > 0
+               else '금리 부담 속에서 소형주 모멘텀이 제한적입니다.' if us10y_p >= 4.5
+               else '소형주 시장 흐름을 면밀히 관찰할 필요가 있습니다.')
+        )
+
+        sector_defense = (
+            f'• <strong>방어주('
+            + ("일부 편입" if vix_price > 20 or sp_1m_chg < -3 else "축소") + '):</strong> '
+            + (f'VIX {vix_price:.1f} → ' if cross and cross.get("vix") else '')
+            + ('변동성 확대 구간으로 배당·유틸리티 헤지 권장.' if vix_price > 20
+               else '변동성이 낮아 방어주 비중을 줄이고 공격적 포지션이 유리합니다.')
+        )
+
+        # 리스크 관리 - 동적 생성
+        risks = []
+        if us10y_p > 4.5:
+            risks.append(f'• 금리 리스크: 10년물 {us10y_p:.2f}%로 고금리 지속 → 밸류에이션 멀티플 수축 위험')
+        if sp_yoy > 20:
+            risks.append(f'• 밸류에이션: {idx_name} YoY {sp_yoy:+.1f}% 급등 후 → 차익실현 압력 상존')
+        if vix_price > 25:
+            risks.append(f'• 변동성: VIX {vix_price:.1f}로 불안 구간 → 급격한 포지션 조정 가능')
+        if btc_chg < -20:
+            risks.append(f'• 크립토 연쇄 청산: BTC 1개월 {btc_chg:+.1f}% → 레버리지 해소가 주식시장 전이 가능')
+        if dxy_chg > 3:
+            risks.append(f'• 달러 강세: DXY 1개월 {dxy_chg:+.1f}% → 다국적 기업 실적 및 신흥국 부담')
+        if not risks:
+            risks.append('• 현재 주요 리스크 지표는 안정적 수준입니다. 다만 급변 가능성에 대비한 포지션 관리가 필요합니다.')
+
+        adv_body = (
+            f'<strong>▎포지션 전략: <span style="color:{adv_stance_color}">{adv_icon} {adv_stance}</span></strong><br>'
+            f'유동성 {liq_3m_chg:+.1f}%(3M), 상관계수 {corr_val:.2f}, 시장 모멘텀 {sp_1m_chg:+.1f}%(1M) 종합 판단.<br><br>'
+            f'<strong>▎섹터별 전략</strong><br>'
+            f'{sector_ai}<br>'
+            f'{sector_cyclical}<br>'
+            f'{sector_small}<br>'
+            f'{sector_defense}<br><br>'
+            f'<strong>▎리스크 관리</strong><br>'
+            + '<br>'.join(risks)
+        )
+    else:  # 한국
+        krw_p = _safe(cross, "krw")
+        krw_chg_1m = _safe(cross, "krw", "chg_1m")
+        nikkei_chg = _safe(cross, "nikkei", "chg_1m")
+
+        sector_semi = (
+            f'• <strong>반도체('
+            + ("핵심 비중확대" if liq_3m_chg > 0 and sp_1m_chg > -5 else "선별적") + '):</strong> '
+            + ('글로벌 유동성 확장과 AI 수요 사이클이 메모리 반도체 섹터를 지지합니다.'
+               if liq_3m_chg > 0 else
+               '유동성 수축 환경이지만 AI 구조적 수요가 반도체 섹터를 지탱합니다.')
+        )
+
+        sector_defense_kr = (
+            f'• <strong>방산·조선('
+            + ("비중확대" if sp_1m_chg > 0 else "중립") + '):</strong> '
+            + ('글로벌 방산 수주 호조와 시장 모멘텀이 긍정적입니다.'
+               if sp_1m_chg > 0 else
+               '방산 펀더멘털은 양호하나 시장 전반의 약세에 유의해야 합니다.')
+        )
+
+        sector_battery = (
+            f'• <strong>2차전지(중립):</strong> '
+            f'글로벌 정책 불확실성 속에서 선별적 접근이 필요합니다.'
+        )
+
+        sector_fin = (
+            f'• <strong>금융('
+            + ("비중확대" if sp_1m_chg > 0 else "중립") + '):</strong> '
+            + ('밸류업 프로그램 수혜와 배당 확대 기조가 긍정적입니다. 저PBR 은행주 관심.'
+               if sp_1m_chg > -3 else
+               '시장 약세 속 방어적 성격의 금융주가 상대적으로 견조할 수 있습니다.')
+        )
+
+        risks = []
+        if sp_1m_chg > 10:
+            risks.append(f'• 과열 경고: {idx_name} 1개월 {sp_1m_chg:+.1f}% 급등 → 단기 차익실현 압력 주의')
+        if krw_p > 1400:
+            risks.append(f'• 환율: 원/달러 {krw_p:,.0f}원 → 달러 강세 심화 시 외국인 매도 압력 가중')
+        elif krw_p > 1300:
+            risks.append(f'• 환율: 원/달러 {krw_p:,.0f}원 → 환율 변동성에 대비한 환헤지 고려')
+        if vix_price > 25:
+            risks.append(f'• 글로벌 변동성: VIX {vix_price:.1f} → 외국인 위험회피 시 한국 증시 민감 반응')
+        if btc_chg < -20:
+            risks.append(f'• 크립토 하락: BTC 1개월 {btc_chg:+.1f}% → 개인투자자 심리 위축 가능')
+        if liq_3m_chg < -1:
+            risks.append(f'• 유동성 수축: 글로벌 유동성 3개월 {liq_3m_chg:+.1f}% → 신흥국 자금유출 압력')
+        if not risks:
+            risks.append('• 현재 주요 리스크 지표는 안정적 수준입니다. 다만 글로벌 변수에 대한 모니터링을 지속하세요.')
+
+        adv_body = (
+            f'<strong>▎포지션 전략: <span style="color:{adv_stance_color}">{adv_icon} {adv_stance}</span></strong><br>'
+            f'글로벌 유동성 {liq_3m_chg:+.1f}%(3M), 상관계수 {corr_val:.2f}, 시장 모멘텀 {sp_1m_chg:+.1f}%(1M) 종합 판단.<br><br>'
+            f'<strong>▎섹터별 전략</strong><br>'
+            f'{sector_semi}<br>'
+            f'{sector_defense_kr}<br>'
+            f'{sector_battery}<br>'
+            f'{sector_fin}<br><br>'
+            f'<strong>▎리스크 관리</strong><br>'
+            + '<br>'.join(risks)
+        )
+
+    return adv_body
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 차트 헬퍼
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -737,6 +1230,9 @@ cutoff = datetime.now() - timedelta(days=365 * period_years)
 
 with st.spinner(f"{CC['liq_label']} & {idx_name} 데이터를 불러오는 중..."):
     df, ohlc_raw = load_data(idx_ticker, CC["fred_liq"], CC["fred_rec"], CC["liq_divisor"])
+    cross_data = load_cross_asset_data()
+    fed_rate_data = load_fed_funds_rate()
+    bok_rate_data = load_bok_base_rate()
 
 if df is None or df.empty:
     st.error("데이터를 불러올 수 없습니다. 잠시 후 새로고침 해주세요.")
@@ -792,7 +1288,7 @@ with kpi_container:
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Daily Brief (상세 버전)
+# Daily Brief (실시간 데이터 기반 동적 생성)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 with brief_container:
     today_str = datetime.now().strftime("%Y년 %m월 %d일")
@@ -829,129 +1325,12 @@ with brief_container:
     else:
         signal_class, signal_text = "signal-neutral", "🟡 혼합 시그널 → 방향성 모색 중, 변동성 확대 주의"
 
-    if country == "🇺🇸 미국":
-        brief_policy = (
-            '<strong>▎연준 정책 현황</strong><br>'
-            '연방기금금리 <span class="hl">3.50–3.75%</span> 유지 (1/28 FOMC). '
-            '만장일치가 아닌 10-2 표결로, <strong>미런·월러 이사가 25bp 인하를 주장</strong>하며 내부 균열이 확인되었습니다. '
-            '파월 의장은 기자회견에서 "현 정책이 유의하게 긴축적이라 보기 어렵다"고 발언, '
-            '데이터 의존적 접근을 재확인했습니다.<br><br>'
-            'QT는 12/1에 공식 종료되었고, 12/12부터 <strong>준비금 관리 매입(RMP)</strong>으로 국채 매입을 재개하여 '
-            '사실상 대차대조표 확장으로 전환했습니다. '
-            'NY연은 윌리엄스 총재는 "이는 정책 스탠스 변화가 아닌 충분한 준비금 유지를 위한 기술적 조치"라고 강조했으나, '
-            '시장은 유동성 공급 확대로 해석하고 있습니다.<br><br>'
-            '<strong>차기 의장 이슈:</strong> 파월 임기 만료(5/15)를 앞두고 트럼프 대통령이 '
-            '<strong>케빈 워시(Kevin Warsh)</strong>를 1/30 차기 의장으로 지명했습니다. '
-            '워시는 2008년 위기 당시 매파적 입장으로 알려져 있으나, 최근에는 AI 생산성 향상을 근거로 '
-            '금리 인하를 지지하는 방향으로 선회했습니다. '
-            '틸리스 상원의원이 파월 대상 DOJ 수사 해결 전까지 인준 반대를 선언하여 '
-            '상원 인준 과정에 불확실성이 존재합니다. '
-            '시장은 여름 이후 1~2회 추가 인하를 가격에 반영 중입니다.'
-        )
-        brief_liq = (
-            f'<strong>▎유동성 데이터 심층 분석</strong><br>'
-            f'본원통화 최신치 <span class="hl">{liq_display}</span> '
-            f'(YoY {liq_yoy:+.1f}%, 1개월 {liq_1m_chg:+.1f}%, 3개월 {liq_3m_chg:+.1f}%, 6개월 {liq_6m_chg:+.1f}%).<br><br>'
-            f'QT 종료(12/1)와 RMP 개시(12/12)로 유동성 바닥이 확인되었으며, '
-            f'완만한 확장 국면에 진입했습니다. '
-            f'12월 말 연말 자금수요에 대응하여 Standing Repo Facility에서 $746억이 공급된 후 '
-            f'1/5까지 전액 상환되어, 단기자금시장은 안정적으로 작동 중입니다.<br><br>'
-            f'<strong>핵심 포인트:</strong> 유동성 확장 속도가 2020-2021년 "무한 QE" 시기보다 '
-            f'현저히 느리므로, 과거와 같은 자산가격 급등보다는 점진적 상승을 예상합니다. '
-            f'RRP(역레포) 잔고 감소와 TGA(재무부 일반계좌) 변동이 단기 유동성의 핵심 변수입니다.'
-        )
-        brief_market = (
-            f'<strong>▎시장 동향 & 섹터 분석</strong><br>'
-            f'{idx_name} <span class="hl">{sp_val:,.0f}</span> '
-            f'(1주 {sp_1w_chg:+.1f}%, 1개월 {sp_1m_chg:+.1f}%, 3개월 {sp_3m_chg:+.1f}%, YoY {sp_yoy:+.1f}%).<br><br>'
-            f'<strong>최근 주요 흐름:</strong><br>'
-            f'• 다우 50,000 역사적 돌파(2/6) → 경기순환주 로테이션 진행<br>'
-            f'• 등가중 S&P 500이 시총가중 S&P 대비 아웃퍼폼(+5% vs +2% YTD) → 랠리 저변 확대<br>'
-            f'• Mag7 실적 혼조: 구글·아마존 AI CapEx $185B·$200B 발표로 투자자 불안 가중<br>'
-            f'• 소프트웨어 섹터 -24% YTD: Anthropic Claude Cowork 등 AI 에이전트 위협으로 급락<br>'
-            f'• 비트코인 -50% (고점 $126K→$62K), 은 -40%, 금 -15% → 위험자산 전면 디레버리징<br><br>'
-            f'<strong>밸류에이션:</strong> S&P 500 선행 P/E 22.2배(5년 평균 20배), 중간선거 해 평균 -18% 조정 이력. '
-            f'AI 기업이익 성장(2026E +12%)이 고밸류를 지지하나, 집중도 리스크(상위 10종목 비중 35%+) 상존.'
-        )
-    else:  # 한국
-        brief_policy = (
-            '<strong>▎한국은행 통화정책 현황</strong><br>'
-            '기준금리 <span class="hl">2.50%</span> (2025/6 인하 이후 유지). '
-            '글로벌 긴축 완화 흐름에 맞춰 한은도 완화적 기조를 유지 중이며, '
-            '원/달러 환율 안정과 가계부채 관리가 추가 인하의 핵심 제약 요인입니다.<br><br>'
-            '<strong>글로벌 정책 영향:</strong> 미 연준의 케빈 워시 차기 의장 지명(1/30)이 '
-            '매파적으로 해석되며 달러 강세→원화 약세 압력이 가중되었습니다. '
-            '한은의 추가 인하 여력이 제한될 수 있으나, 내수 경기 둔화 시 '
-            '하반기 1회 추가 인하 가능성이 열려 있습니다.<br><br>'
-            '<strong>이재명 정부 정책:</strong> "KOSPI 5,000" 국정과제 목표가 조기 달성되었으며, '
-            '밸류업 프로그램 2.0, 공매도 재개 관리 등 자본시장 친화 정책이 지속되고 있습니다. '
-            '한미 관세 합의(2025년)로 수출 환경이 안정적이나, '
-            '신용거래융자 잔고 30.5조원(사상 최대)이 과열 시그널로 주시됩니다.'
-        )
-        brief_liq = (
-            f'<strong>▎유동성 데이터 심층 분석</strong><br>'
-            f'Fed 본원통화(글로벌 유동성 지표) 최신치 <span class="hl">{liq_display}</span> '
-            f'(YoY {liq_yoy:+.1f}%, 1개월 {liq_1m_chg:+.1f}%, 3개월 {liq_3m_chg:+.1f}%, 6개월 {liq_6m_chg:+.1f}%).<br><br>'
-            f'한국 증시는 글로벌 달러 유동성에 높은 민감도를 보입니다. '
-            f'Fed의 QT 종료와 RMP 개시로 글로벌 유동성 바닥이 형성된 것은 '
-            f'신흥국 자금 흐름에 우호적입니다.<br><br>'
-            f'<strong>핵심 포인트:</strong> 외국인 순매수 복귀 여부와 원화 환율 안정이 '
-            f'한국 증시 유동성의 직접적 지표입니다. '
-            f'최근 기관·외국인의 반도체 섹터 집중 매수가 확인되며, '
-            f'연기금(NPS)의 환헤지 프로그램 재개 논의도 원화 안정에 긍정적입니다.'
-        )
-        brief_market = (
-            f'<strong>▎시장 동향 & 섹터 분석</strong><br>'
-            f'{idx_name} <span class="hl">{sp_val:,.0f}</span> '
-            f'(1주 {sp_1w_chg:+.1f}%, 1개월 {sp_1m_chg:+.1f}%, 3개월 {sp_3m_chg:+.1f}%, YoY {sp_yoy:+.1f}%).<br><br>'
-            f'<strong>최근 주요 흐름:</strong><br>'
-            f'• KOSPI 5,300 사상 최고가 경신(2/10) → 2025년 저점 대비 +132% 상승<br>'
-            f'• 삼성전자 HBM4 양산 개시(2월) → NVIDIA 차세대 GPU 납품 확정, SK하이닉스 +6%<br>'
-            f'• 워시 지명 쇼크(1/30) → 하루 -5.26% 후 익일 +6.84% 역대급 V자 반등<br>'
-            f'• KOSPI 200 변동성지수 50 돌파 → 6년 래 최고, 신용융자 30.5조원 사상 최대<br>'
-            f'• 코리아 디스카운트 해소 진행: 시총 3,500조원 돌파, PBR 1.2배로 상승<br><br>'
-            f'<strong>리스크:</strong> RSI·스토캐스틱 과매수 구간 진입, 레버리지 과열 경고. '
-            f'단기 5,000선 지지 테스트 가능성 상존. 중국 제조업 PMI 둔화도 부담.'
-        )
-
-    brief_corr = (
-        f'<strong>▎상관관계 진단</strong><br>'
-        f'90일 롤링 상관계수 <span class="hl">{corr_val:.3f}</span>. '
-        + ('유동성과 주가가 강한 동행 관계를 유지 중입니다. '
-           '이는 중앙은행 유동성 공급이 주가를 직접적으로 지지하는 "유동성 장세" 구간임을 의미합니다. '
-           '유동성 방향 전환 시 주가도 동반 조정될 수 있어 Fed 정책 변화에 민감하게 대응해야 합니다.'
-           if corr_val > 0.5
-           else '유동성-주가 동조성이 약화된 구간입니다. '
-                '기업실적, 지정학, 섹터 로테이션 등 유동성 외 변수가 주가를 주도하고 있어, '
-                '펀더멘털 분석의 비중을 높일 필요가 있습니다.'
-           if corr_val > 0
-           else '음의 상관으로 전환된 특이 구간입니다. '
-                '유동성이 증가하는데 주가가 하락하거나 그 반대 상황으로, '
-                '시장이 유동성 외 강력한 악재(지정학, 신용 이벤트 등)에 반응하고 있음을 시사합니다.')
+    # 동적 Daily Brief 생성
+    brief_policy, brief_liq, brief_market, brief_corr, brief_cross = generate_dynamic_brief(
+        country, df, liq_display, liq_yoy, liq_1m_chg, liq_3m_chg, liq_6m_chg,
+        sp_val, sp_1w_chg, sp_1m_chg, sp_3m_chg, sp_yoy, corr_val,
+        idx_name, cross_data, fed_rate_data, bok_rate_data
     )
-
-    # ── 글로벌 크로스에셋 모니터 ──
-    if country == "🇺🇸 미국":
-        brief_cross = (
-            '<strong>▎글로벌 크로스에셋 모니터</strong><br>'
-            '• <strong>귀금속:</strong> 금 $4,850(-15% 고점 대비), 은 $64(-55% 고점 대비). '
-            '워시 지명 후 달러 강세에 따른 급락 후 변동성 극심. CME 증거금 인상 반복<br>'
-            '• <strong>크립토:</strong> BTC $69K(-45% 고점), ETH -55%. '
-            '"디지털 금" 내러티브 붕괴, ETF 자금유출 지속. 마이클 버리 "담보 사망 소용돌이" 경고<br>'
-            '• <strong>국채:</strong> 10년물 4.0% 부근. 약한 소매판매 → 금리인하 기대 2회 이상으로 상향<br>'
-            '• <strong>달러:</strong> DXY 강세. 워시 지명 + 관세 정책 → 신흥국 통화 압박<br>'
-            '• <strong>일본:</strong> 니케이 57,650 사상 최고. 다카이치 총선 압승 → "다카이치 트레이드" 가속'
-        )
-    else:
-        brief_cross = (
-            '<strong>▎글로벌 크로스에셋 모니터</strong><br>'
-            '• <strong>환율:</strong> 원/달러 1,350원대. 달러 강세 지속 중이나 NPS 환헤지 논의로 급등 제한<br>'
-            '• <strong>귀금속:</strong> 금 $4,850(-15% 고점 대비), 은 $64(-55%). '
-            '글로벌 위험자산 디레버리징 영향<br>'
-            '• <strong>크립토:</strong> BTC $69K(-45% 고점). 한국 개인투자자 손실 확대 우려<br>'
-            '• <strong>반도체:</strong> TSMC 1월 매출 호조 → 글로벌 AI 수요 건재 확인. 삼성 HBM4 양산이 핵심 촉매<br>'
-            '• <strong>일본:</strong> 니케이 57,650 사상 최고 → 아시아 증시 전반 위험선호 회복 중'
-        )
 
     # 종합 시그널 생성
     st.markdown(
@@ -977,82 +1356,19 @@ with brief_container:
     )
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # 투자 조언 (Investment Advice)
+    # 투자 조언 (Investment Advice — 실시간 데이터 기반 동적 생성)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    # 동적 분석 기반 투자 전략 생성
-    if country == "🇺🇸 미국":
-        if bullish_count >= 3:
-            adv_stance = "비중 확대 (Overweight)"
-            adv_stance_color = "var(--accent-green)"
-            adv_icon = "🟢"
-        elif bearish_count >= 2:
-            adv_stance = "비중 축소 (Underweight)"
-            adv_stance_color = "var(--accent-red)"
-            adv_icon = "🔴"
-        else:
-            adv_stance = "중립 (Neutral)"
-            adv_stance_color = "var(--accent-amber)"
-            adv_icon = "🟡"
-
-        adv_body = (
-            f'<strong>▎포지션 전략: <span style="color:{adv_stance_color}">{adv_icon} {adv_stance}</span></strong><br>'
-            f'유동성 {liq_3m_chg:+.1f}%(3M), 상관계수 {corr_val:.2f}, 시장 모멘텀 {sp_1m_chg:+.1f}%(1M) 종합 판단.<br><br>'
-            f'<strong>▎섹터별 전략</strong><br>'
-            f'• <strong>AI/반도체(비중확대):</strong> NVIDIA·Broadcom 중심 AI CapEx 사이클 지속. '
-            f'다만 소프트웨어 섹터는 AI 에이전트 위협으로 약세 → 선별적 접근 필요<br>'
-            f'• <strong>경기순환주(비중확대):</strong> 다우 50K 돌파, 등가중 S&P 아웃퍼폼 → '
-            f'은행·산업재·헬스케어로 로테이션 진행 중<br>'
-            f'• <strong>소형주(관심):</strong> Russell 2000 YTD +3% S&P 아웃퍼폼. '
-            f'금리 인하 기대 + OBBBA 감세 수혜 → 하반기 추가 상승 여력<br>'
-            f'• <strong>방어주(일부 편입):</strong> 중간선거 해 평균 -18% 조정 이력. '
-            f'배당·유틸리티로 변동성 헤지 권장<br><br>'
-            f'<strong>▎리스크 관리</strong><br>'
-            f'• 워시 인준 불확실성: 틸리스 의원 반대 → 의장 공백 시 변동성 확대 가능<br>'
-            f'• 밸류에이션: 선행 P/E 22.2배, CAPE 39배 → 역사적 고점권. '
-            f'실적 미달 시 급격한 멀티플 수축 위험<br>'
-            f'• 크립토·귀금속 연쇄 청산: BTC -50%, 은 -55% → '
-            f'레버리지 해소가 주식시장으로 전이될 가능성 모니터링<br>'
-            f'• <strong>핵심 지지선:</strong> S&P 6,800 / 나스닥 22,000 이탈 시 추가 하방 열림'
-        )
-    else:  # 한국
-        if bullish_count >= 3:
-            adv_stance = "비중 확대 (Overweight)"
-            adv_stance_color = "var(--accent-green)"
-            adv_icon = "🟢"
-        elif bearish_count >= 2:
-            adv_stance = "비중 축소 (Underweight)"
-            adv_stance_color = "var(--accent-red)"
-            adv_icon = "🔴"
-        else:
-            adv_stance = "중립 (Neutral)"
-            adv_stance_color = "var(--accent-amber)"
-            adv_icon = "🟡"
-
-        adv_body = (
-            f'<strong>▎포지션 전략: <span style="color:{adv_stance_color}">{adv_icon} {adv_stance}</span></strong><br>'
-            f'글로벌 유동성 {liq_3m_chg:+.1f}%(3M), 상관계수 {corr_val:.2f}, 시장 모멘텀 {sp_1m_chg:+.1f}%(1M) 종합 판단.<br><br>'
-            f'<strong>▎섹터별 전략</strong><br>'
-            f'• <strong>반도체(핵심 비중확대):</strong> 삼성전자 HBM4 양산·NVIDIA 납품 확정, '
-            f'SK하이닉스 HBM3E 풀가동 → AI 메모리 슈퍼사이클의 최대 수혜<br>'
-            f'• <strong>방산·조선(비중확대):</strong> 한화에어로스페이스, HD현대중공업 등 '
-            f'글로벌 방산 수주 호조 지속. 트럼프 방위비 증액 기조 수혜<br>'
-            f'• <strong>2차전지(중립):</strong> 미국 IRA 보조금 불확실성, 중국 LFP 가격 경쟁 → '
-            f'LG에너지솔루션·삼성SDI 선별적 접근<br>'
-            f'• <strong>금융(비중확대):</strong> 밸류업 프로그램 수혜, 배당 확대 기조. '
-            f'저PBR 은행주 → KB금융·하나금융 관심<br><br>'
-            f'<strong>▎리스크 관리</strong><br>'
-            f'• 과열 경고: RSI 과매수, 신용융자 30.5조원 사상 최대 → 급락 시 반대매매 연쇄 위험<br>'
-            f'• 환율: 원/달러 1,350원대 → 워시 인준 시 달러 강세 심화 가능. 환헤지 고려<br>'
-            f'• 중국 경기: 제조업 PMI 둔화 → 한국 수출에 직접 영향<br>'
-            f'• <strong>핵심 지지선:</strong> KOSPI 5,000 심리적 지지 / 4,800 기술적 지지 이탈 시 추가 조정'
-        )
+    adv_body = generate_dynamic_advice(
+        country, bullish_count, bearish_count, liq_3m_chg, corr_val, sp_1m_chg,
+        sp_yoy, liq_yoy, cross_data, sp_val, idx_name
+    )
 
     st.markdown(
         f'<div class="report-box" style="background:linear-gradient(135deg, #fef3c7, #fef9c3); border-color:#fbbf24;">'
         f'<div class="report-header">'
         f'<span class="report-badge" style="background:#f59e0b;">Investment Advice</span>'
-        f'<span class="report-date">{today_str} 기준 · 유동성 데이터 기반 분석</span></div>'
+        f'<span class="report-date">{today_str} 기준 · 실시간 데이터 기반 분석</span></div>'
         f'<div class="report-title">💡 투자 전략 가이드</div>'
         f'<div class="report-body">'
         f'{adv_body}'
