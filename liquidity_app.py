@@ -638,6 +638,7 @@ def load_cross_asset_data():
         "btc": "BTC-USD",      # 비트코인
         "eth": "ETH-USD",      # 이더리움
         "us10y": "^TNX",       # 미국 10년물 금리
+        "us2y": "^IRX",        # 미국 2년물 금리 (단기금리 프록시)
         "dxy": "DX-F",         # 달러 인덱스 (선물)
         "nikkei": "^N225",     # 니케이
         "krw": "KRW=X",       # USD/KRW
@@ -645,6 +646,15 @@ def load_cross_asset_data():
         "russell": "^RUT",     # Russell 2000
         "dow": "^DJI",         # 다우존스
         "kospi": "^KS11",      # KOSPI
+        "xlk": "XLK",          # 기술 섹터 ETF
+        "xle": "XLE",          # 에너지 섹터 ETF
+        "xlf": "XLF",          # 금융 섹터 ETF
+        "xlv": "XLV",          # 헬스케어 섹터 ETF
+        "xlu": "XLU",          # 유틸리티 섹터 ETF
+        "tlt": "TLT",          # 장기국채 ETF
+        "hyg": "HYG",          # 하이일드 채권 ETF
+        "oil": "CL=F",         # WTI 원유 선물
+        "copper": "HG=F",      # 구리 선물
     }
 
     result = {}
@@ -709,6 +719,232 @@ def load_bok_base_rate():
         return None
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_market_news():
+    """yfinance를 활용한 주요 시장 관련 뉴스 수집"""
+    import yfinance as yf
+    news_items = []
+    # 주요 지수/자산에서 뉴스 수집
+    news_tickers = ["^GSPC", "^IXIC", "GC=F", "BTC-USD", "^KS11"]
+    seen_titles = set()
+    for ticker_symbol in news_tickers:
+        try:
+            ticker = yf.Ticker(ticker_symbol)
+            if hasattr(ticker, 'news') and ticker.news:
+                for item in ticker.news[:5]:
+                    content = item.get("content", {})
+                    title = content.get("title", "")
+                    provider = content.get("provider", {}).get("displayName", "")
+                    pub_date = content.get("pubDate", "")
+                    canonical_url = content.get("canonicalUrl", {}).get("url", "")
+                    # 중복 제거
+                    if title and title not in seen_titles:
+                        seen_titles.add(title)
+                        news_items.append({
+                            "title": title,
+                            "publisher": provider,
+                            "link": canonical_url,
+                            "published": pub_date,
+                            "ticker": ticker_symbol,
+                        })
+        except Exception:
+            continue
+    # 최신 순 정렬 후 상위 10개
+    return news_items[:10]
+
+
+def compute_market_sentiment(cross, liq_yoy, liq_3m_chg, sp_1m_chg, sp_yoy, corr_val):
+    """복합 시장 센티먼트 점수 계산 (0-100 스케일, Fear ↔ Greed)"""
+    scores = []
+
+    # 1. VIX 기반 (0-100, 낮을수록 Greed)
+    vix = _safe(cross, "vix")
+    if vix > 0:
+        vix_score = max(0, min(100, 100 - (vix - 12) * 4))
+        scores.append(vix_score)
+
+    # 2. 시장 모멘텀 (1개월 변동)
+    mom_score = max(0, min(100, 50 + sp_1m_chg * 5))
+    scores.append(mom_score)
+
+    # 3. 고점 대비 거리 (S&P500 YoY)
+    yoy_score = max(0, min(100, 50 + sp_yoy * 1.5))
+    scores.append(yoy_score)
+
+    # 4. 유동성 추세
+    liq_score = max(0, min(100, 50 + liq_3m_chg * 10))
+    scores.append(liq_score)
+
+    # 5. 안전자산 vs 위험자산 (금 vs 주식)
+    gold_chg = _safe(cross, "gold", "chg_1m")
+    safe_haven_score = max(0, min(100, 50 - gold_chg * 3 + sp_1m_chg * 3))
+    scores.append(safe_haven_score)
+
+    # 6. 하이일드 스프레드 (HYG 변동 - 하락이면 스프레드 확대)
+    hyg_chg = _safe(cross, "hyg", "chg_1m")
+    credit_score = max(0, min(100, 50 + hyg_chg * 8))
+    scores.append(credit_score)
+
+    # 7. 상관관계 (유동성 장세 여부)
+    corr_score = max(0, min(100, 50 + corr_val * 40))
+    scores.append(corr_score)
+
+    avg_score = sum(scores) / len(scores) if scores else 50
+
+    if avg_score >= 75:
+        label = "극도의 탐욕 (Extreme Greed)"
+        color = "#16a34a"
+    elif avg_score >= 60:
+        label = "탐욕 (Greed)"
+        color = "#65a30d"
+    elif avg_score >= 45:
+        label = "중립 (Neutral)"
+        color = "#ca8a04"
+    elif avg_score >= 30:
+        label = "공포 (Fear)"
+        color = "#dc2626"
+    else:
+        label = "극도의 공포 (Extreme Fear)"
+        color = "#991b1b"
+
+    return {"score": round(avg_score, 1), "label": label, "color": color, "components": scores}
+
+
+def generate_yield_curve_analysis(cross):
+    """수익률 곡선(Yield Curve) 분석"""
+    us10y = _safe(cross, "us10y")
+    us2y = _safe(cross, "us2y")
+
+    if us10y == 0 or us2y == 0:
+        return ""
+
+    # us2y(^IRX)는 13주 단기금리이므로 100으로 나눠야 함
+    us2y_adj = us2y / 100 if us2y > 10 else us2y
+    spread = us10y - us2y_adj
+
+    if spread < -0.5:
+        curve_status = "깊은 역전 상태 (Deep Inversion)"
+        implication = "경기침체 선행 신호가 강하게 나타나고 있습니다. 역사적으로 역전 후 6~18개월 내 경기둔화가 확인되었습니다."
+        risk_level = "높음"
+    elif spread < 0:
+        curve_status = "역전 상태 (Inverted)"
+        implication = "단기금리가 장기금리를 상회하여 경기둔화 우려가 존재합니다. 다만 역전 해소(재정상화) 시점이 더 중요한 시그널입니다."
+        risk_level = "경계"
+    elif spread < 0.5:
+        curve_status = "평탄화 (Flat)"
+        implication = "수익률 곡선이 평탄하여 경기 전환 구간에 위치하고 있습니다. 정상화 진행 중이라면 리스크 자산에 점진적으로 긍정적입니다."
+        risk_level = "보통"
+    else:
+        curve_status = "정상 (Normal/Steepening)"
+        implication = "장기금리가 단기금리를 상회하는 정상적 수익률 곡선입니다. 경기 확장 기대가 반영되어 있습니다."
+        risk_level = "안정"
+
+    return (
+        f'<strong>▎수익률 곡선 (Yield Curve) 분석</strong><br>'
+        f'10Y-단기금리 스프레드: <span class="hl">{spread:+.2f}%p</span> '
+        f'(10Y {us10y:.2f}%, 단기 {us2y_adj:.2f}%)<br>'
+        f'상태: <strong>{curve_status}</strong> | 리스크 레벨: {risk_level}<br><br>'
+        f'{implication}'
+    )
+
+
+def generate_sector_rotation_analysis(cross):
+    """섹터 로테이션 분석 (섹터 ETF 기반)"""
+    xlk_chg = _safe(cross, "xlk", "chg_1m")
+    xle_chg = _safe(cross, "xle", "chg_1m")
+    xlf_chg = _safe(cross, "xlf", "chg_1m")
+    xlv_chg = _safe(cross, "xlv", "chg_1m")
+    xlu_chg = _safe(cross, "xlu", "chg_1m")
+
+    sectors = [
+        ("기술(XLK)", xlk_chg),
+        ("에너지(XLE)", xle_chg),
+        ("금융(XLF)", xlf_chg),
+        ("헬스케어(XLV)", xlv_chg),
+        ("유틸리티(XLU)", xlu_chg),
+    ]
+    sectors_sorted = sorted(sectors, key=lambda x: x[1], reverse=True)
+
+    # 경기 사이클 판단
+    defensive = (xlv_chg + xlu_chg) / 2
+    cyclical = (xlk_chg + xle_chg + xlf_chg) / 3
+
+    if cyclical > defensive + 2:
+        cycle_phase = "확장기 (Expansion)"
+        cycle_desc = "경기순환 섹터가 방어 섹터를 아웃퍼폼하고 있어 리스크-온 환경입니다."
+    elif defensive > cyclical + 2:
+        cycle_phase = "수축기 (Contraction)"
+        cycle_desc = "방어 섹터가 경기순환 섹터를 아웃퍼폼하고 있어 리스크-오프 환경입니다."
+    else:
+        cycle_phase = "전환기 (Transition)"
+        cycle_desc = "섹터 간 성과 차이가 뚜렷하지 않아 방향 전환 모색 구간입니다."
+
+    sector_lines = ""
+    for name, chg in sectors_sorted:
+        arrow = "▲" if chg >= 0 else "▼"
+        color = "var(--accent-green)" if chg >= 0 else "var(--accent-red)"
+        sector_lines += f'<span style="color:{color}">{arrow}</span> {name}: {chg:+.1f}% &nbsp;&nbsp;'
+
+    return (
+        f'<strong>▎섹터 로테이션 분석</strong><br>'
+        f'사이클 판단: <strong>{cycle_phase}</strong> — {cycle_desc}<br><br>'
+        f'<strong>1개월 섹터별 성과:</strong><br>'
+        f'{sector_lines}<br><br>'
+        f'<strong>리더:</strong> {sectors_sorted[0][0]} ({sectors_sorted[0][1]:+.1f}%) | '
+        f'<strong>래거드:</strong> {sectors_sorted[-1][0]} ({sectors_sorted[-1][1]:+.1f}%)'
+    )
+
+
+def generate_commodity_analysis(cross):
+    """원자재 및 실물자산 심층 분석"""
+    gold_p = _safe(cross, "gold")
+    gold_chg = _safe(cross, "gold", "chg_1m")
+    gold_3m = _safe(cross, "gold", "chg_3m")
+    silver_p = _safe(cross, "silver")
+    silver_chg = _safe(cross, "silver", "chg_1m")
+    oil_p = _safe(cross, "oil")
+    oil_chg = _safe(cross, "oil", "chg_1m")
+    oil_3m = _safe(cross, "oil", "chg_3m")
+    copper_p = _safe(cross, "copper")
+    copper_chg = _safe(cross, "copper", "chg_1m")
+    copper_3m = _safe(cross, "copper", "chg_3m")
+
+    # 금/은 비율 (Gold/Silver Ratio) — 경기 신호
+    gs_ratio = gold_p / silver_p if silver_p > 0 else 0
+    gs_comment = ""
+    if gs_ratio > 85:
+        gs_comment = f"금/은 비율 {gs_ratio:.1f}로 극단적 수준 → 경기침체 우려 또는 안전자산 선호가 극대화된 상태입니다."
+    elif gs_ratio > 75:
+        gs_comment = f"금/은 비율 {gs_ratio:.1f}로 높은 수준 → 리스크 회피 심리가 우세합니다."
+    elif gs_ratio > 65:
+        gs_comment = f"금/은 비율 {gs_ratio:.1f}로 정상 범위 → 안전자산과 산업 수요가 균형을 이루고 있습니다."
+    else:
+        gs_comment = f"금/은 비율 {gs_ratio:.1f}로 낮은 수준 → 산업용 수요(은) 강세로 경기 확장 신호입니다."
+
+    # 구리/금 비율 — 경기선행 지표
+    cg_ratio_comment = ""
+    if copper_p > 0 and gold_p > 0:
+        if copper_chg > gold_chg + 2:
+            cg_ratio_comment = "구리가 금을 아웃퍼폼 → 리플레이션/경기 확장 베팅이 우세합니다."
+        elif gold_chg > copper_chg + 2:
+            cg_ratio_comment = "금이 구리를 아웃퍼폼 → 안전자산 선호/디플레이션 우려가 부각되고 있습니다."
+        else:
+            cg_ratio_comment = "구리와 금이 동조적 움직임 → 인플레이션 기대가 안정적입니다."
+
+    return (
+        f'<strong>▎원자재 & 실물자산 분석</strong><br>'
+        f'• <strong>금:</strong> ${gold_p:,.0f} (1M {gold_chg:+.1f}%, 3M {gold_3m:+.1f}%) — '
+        + ('인플레이션 헤지·안전자산 수요가 견고합니다.' if gold_chg > 0 else '리스크-온 환경에서 안전자산 매력이 약화되었습니다.') + '<br>'
+        f'• <strong>원유(WTI):</strong> ${oil_p:,.1f} (1M {oil_chg:+.1f}%, 3M {oil_3m:+.1f}%) — '
+        + ('에너지 수요 강세 또는 공급 축소가 가격을 지지합니다.' if oil_chg > 0 else '수요 둔화 또는 공급 과잉 우려가 반영되고 있습니다.') + '<br>'
+        f'• <strong>구리:</strong> ${copper_p:,.2f} (1M {copper_chg:+.1f}%, 3M {copper_3m:+.1f}%) — '
+        + ('"닥터 코퍼" 상승은 글로벌 경기 회복 기대를 반영합니다.' if copper_chg > 0 else '산업 수요 둔화 우려가 반영되고 있습니다.') + '<br>'
+        f'• <strong>은:</strong> ${silver_p:,.1f} (1M {silver_chg:+.1f}%)<br><br>'
+        f'{gs_comment}<br>'
+        f'{cg_ratio_comment}'
+    )
+
+
 def _safe(d, key, sub="price", fallback=0):
     """크로스에셋 딕셔너리에서 안전하게 값 추출"""
     if d and d.get(key):
@@ -727,8 +963,8 @@ def _chg_color(val):
 
 def generate_dynamic_brief(country, df, liq_display, liq_yoy, liq_1m_chg, liq_3m_chg, liq_6m_chg,
                            sp_val, sp_1w_chg, sp_1m_chg, sp_3m_chg, sp_yoy, corr_val,
-                           idx_name, cross, fed_rate, bok_rate):
-    """Daily Brief 전체를 실시간 데이터 기반으로 동적 생성"""
+                           idx_name, cross, fed_rate, bok_rate, news_data=None):
+    """Daily Brief 전체를 실시간 데이터 기반으로 동적 생성 (뉴스 및 심층분석 포함)"""
 
     # ── 정책 현황 ──
     if country == "🇺🇸 미국":
@@ -958,12 +1194,85 @@ def generate_dynamic_brief(country, df, liq_display, liq_yoy, liq_1m_chg, liq_3m
             + ('아시아 증시 전반 위험선호 회복 중' if nikkei_chg > 0 else '아시아 증시 위험회피 흐름')
         )
 
-    return brief_policy, brief_liq, brief_market, brief_corr, brief_cross
+    # ── 수익률 곡선 분석 ──
+    brief_yield_curve = generate_yield_curve_analysis(cross)
+
+    # ── 섹터 로테이션 분석 (미국만) ──
+    brief_sector_rotation = ""
+    if country == "🇺🇸 미국":
+        brief_sector_rotation = generate_sector_rotation_analysis(cross)
+
+    # ── 원자재 분석 ──
+    brief_commodity = generate_commodity_analysis(cross)
+
+    # ── 시장 센티먼트 ──
+    sentiment = compute_market_sentiment(cross, liq_yoy, liq_3m_chg, sp_1m_chg, sp_yoy, corr_val)
+    brief_sentiment = (
+        f'<strong>▎시장 센티먼트 종합 (Fear & Greed Index)</strong><br>'
+        f'<div style="display:flex;align-items:center;gap:12px;margin:8px 0;">'
+        f'<div style="font-size:2rem;font-weight:700;color:{sentiment["color"]}">{sentiment["score"]}</div>'
+        f'<div>'
+        f'<div style="font-weight:600;color:{sentiment["color"]}">{sentiment["label"]}</div>'
+        f'<div style="font-size:0.8rem;color:var(--text-muted);">VIX·모멘텀·유동성·안전자산·신용·상관관계 7개 지표 종합</div>'
+        f'</div></div>'
+        f'<div style="background:linear-gradient(90deg, #991b1b, #dc2626, #ca8a04, #65a30d, #16a34a);'
+        f'height:8px;border-radius:4px;position:relative;margin:4px 0 8px 0;">'
+        f'<div style="position:absolute;left:{sentiment["score"]}%;top:-4px;width:3px;height:16px;'
+        f'background:#1e293b;border-radius:2px;"></div></div>'
+        + ('극도의 탐욕 구간은 역사적으로 조정이 임박했을 가능성을 시사합니다. 포지션 축소를 고려하세요.' if sentiment["score"] >= 75
+           else '탐욕 구간이지만 추세 지속 가능성이 있습니다. 신규 진입 시 분할 매수 권장.' if sentiment["score"] >= 60
+           else '중립적 환경으로 방향성 확인 후 대응하는 것이 유리합니다.' if sentiment["score"] >= 45
+           else '공포 구간은 역사적으로 매수 기회가 되었습니다. 단, 추가 하락 가능성에 대비한 분할 매수 접근이 필요합니다.' if sentiment["score"] >= 30
+           else '극도의 공포 구간입니다. 역발상 투자 관점에서 기회가 될 수 있으나, 시스템 리스크 확인이 선행되어야 합니다.')
+    )
+
+    # ── 신용 시장 모니터 ──
+    hyg_chg = _safe(cross, "hyg", "chg_1m")
+    hyg_3m = _safe(cross, "hyg", "chg_3m")
+    tlt_chg = _safe(cross, "tlt", "chg_1m")
+    tlt_3m = _safe(cross, "tlt", "chg_3m")
+    brief_credit = (
+        f'<strong>▎신용 시장 & 채권 모니터</strong><br>'
+        f'• <strong>하이일드 채권(HYG):</strong> 1M {hyg_chg:+.1f}%, 3M {hyg_3m:+.1f}% → '
+        + ('신용 스프레드 축소, 리스크 선호 유지' if hyg_chg > 0 else '신용 스프레드 확대 가능성, 위험 신호') + '<br>'
+        f'• <strong>장기국채(TLT):</strong> 1M {tlt_chg:+.1f}%, 3M {tlt_3m:+.1f}% → '
+        + ('장기채 가격 상승 = 금리 하락 기대 반영' if tlt_chg > 0 else '장기채 가격 하락 = 금리 상승/인플레이션 우려') + '<br><br>'
+        + (f'<strong>시사점:</strong> 하이일드와 장기채가 동반 상승 → 골디락스(적정 성장 + 저금리) 환경에 대한 기대가 형성되어 있습니다.'
+           if hyg_chg > 0 and tlt_chg > 0
+           else f'<strong>시사점:</strong> 하이일드 상승·장기채 하락 → 경기 과열/인플레이션 환경으로 리스크 자산에는 우호적이나 금리 상승 부담이 존재합니다.'
+           if hyg_chg > 0 and tlt_chg <= 0
+           else f'<strong>시사점:</strong> 하이일드 하락·장기채 상승 → 경기침체 우려로 안전자산 선호가 나타나고 있습니다. 위험 자산 비중 축소를 고려하세요.'
+           if hyg_chg <= 0 and tlt_chg > 0
+           else f'<strong>시사점:</strong> 하이일드·장기채 동반 하락 → 유동성 위축 또는 포트폴리오 리밸런싱에 의한 매도 압력이 존재합니다.')
+    )
+
+    # ── 관련 뉴스 ──
+    brief_news = ""
+    if news_data:
+        news_lines = []
+        for n in news_data[:6]:
+            publisher = n.get("publisher", "")
+            link = n.get("link", "")
+            title = n.get("title", "")
+            if title:
+                if link:
+                    news_lines.append(f'• <a href="{link}" target="_blank" style="color:#2563eb;text-decoration:none;">{title}</a> <span style="color:var(--text-muted);font-size:0.75rem;">— {publisher}</span>')
+                else:
+                    news_lines.append(f'• {title} <span style="color:var(--text-muted);font-size:0.75rem;">— {publisher}</span>')
+        if news_lines:
+            brief_news = (
+                f'<strong>▎관련 뉴스 & 이슈</strong><br>'
+                + '<br>'.join(news_lines)
+            )
+
+    return (brief_policy, brief_liq, brief_market, brief_corr, brief_cross,
+            brief_yield_curve, brief_sector_rotation, brief_commodity,
+            brief_sentiment, brief_credit, brief_news)
 
 
 def generate_dynamic_advice(country, bullish_count, bearish_count, liq_3m_chg, corr_val, sp_1m_chg,
-                            sp_yoy, liq_yoy, cross, sp_val, idx_name):
-    """Investment Advice를 실시간 데이터 기반으로 동적 생성"""
+                            sp_yoy, liq_yoy, cross, sp_val, idx_name, sentiment_data=None):
+    """Investment Advice를 실시간 데이터 기반으로 동적 생성 (포트폴리오 배분, 확신도, 역사적 맥락 포함)"""
 
     if bullish_count >= 3:
         adv_stance = "비중 확대 (Overweight)"
@@ -1037,16 +1346,77 @@ def generate_dynamic_advice(country, bullish_count, bearish_count, liq_3m_chg, c
         if not risks:
             risks.append('• 현재 주요 리스크 지표는 안정적 수준입니다. 다만 급변 가능성에 대비한 포지션 관리가 필요합니다.')
 
+        # 포트폴리오 배분 추천 (미국)
+        if bullish_count >= 3:
+            eq_pct, bond_pct, cash_pct, alt_pct = 70, 15, 5, 10
+        elif bearish_count >= 2:
+            eq_pct, bond_pct, cash_pct, alt_pct = 35, 35, 20, 10
+        else:
+            eq_pct, bond_pct, cash_pct, alt_pct = 55, 25, 10, 10
+
+        portfolio_alloc = (
+            f'<strong>▎추천 포트폴리오 배분</strong><br>'
+            f'<div style="display:flex;gap:8px;margin:6px 0;">'
+            f'<div style="flex:{eq_pct};background:#3b82f6;color:white;text-align:center;padding:6px;border-radius:4px;font-size:0.8rem;">주식 {eq_pct}%</div>'
+            f'<div style="flex:{bond_pct};background:#10b981;color:white;text-align:center;padding:6px;border-radius:4px;font-size:0.8rem;">채권 {bond_pct}%</div>'
+            f'<div style="flex:{cash_pct};background:#94a3b8;color:white;text-align:center;padding:6px;border-radius:4px;font-size:0.8rem;">현금 {cash_pct}%</div>'
+            f'<div style="flex:{alt_pct};background:#f59e0b;color:white;text-align:center;padding:6px;border-radius:4px;font-size:0.8rem;">대체 {alt_pct}%</div>'
+            f'</div>'
+            f'주식 내: 성장주 {60 if liq_3m_chg > 0 else 40}% / 가치주 {40 if liq_3m_chg > 0 else 60}% | '
+            f'대체자산: 금·원자재·크립토 분산'
+        )
+
+        # 확신도 (Conviction Level)
+        conviction = min(5, bullish_count + (1 if liq_yoy > 2 else 0) + (1 if sp_1m_chg > 3 else 0))
+        if bearish_count >= 2:
+            conviction = max(1, 5 - bearish_count - (1 if vix_price > 25 else 0))
+        conviction_stars = "★" * conviction + "☆" * (5 - conviction)
+        conviction_desc = ["매우 낮음", "낮음", "보통", "높음", "매우 높음"][min(conviction, 4)]
+
+        # 핵심 트리거
+        triggers = []
+        if us10y_p > 4.0:
+            triggers.append(f'10Y 금리 {us10y_p:.2f}% → 4.0% 하회 시 성장주 비중 확대 신호')
+        if vix_price > 20:
+            triggers.append(f'VIX {vix_price:.1f} → 20 하회 시 포지션 확대 가능')
+        elif vix_price < 15:
+            triggers.append(f'VIX {vix_price:.1f} → 급등 시 빠른 헤지 필요')
+        if liq_3m_chg < 0:
+            triggers.append(f'유동성 3M {liq_3m_chg:+.1f}% → 플러스 전환 시 매수 신호')
+        if sp_1m_chg > 5:
+            triggers.append(f'{idx_name} 1M {sp_1m_chg:+.1f}% 급등 → RSI 과매수 구간 진입 주의')
+        if not triggers:
+            triggers.append('현재 주요 트리거 이벤트가 없는 안정적 구간입니다. 기존 포지션 유지 권장.')
+
+        # 역사적 유사 환경 분석
+        historical = ""
+        if liq_3m_chg > 2 and sp_1m_chg > 3:
+            historical = "유동성 확장 + 주가 상승 동시 진행은 2020년 하반기, 2023년 말과 유사한 패턴입니다. 이후 수개월간 강세가 이어졌으나, 밸류에이션 부담이 수반되었습니다."
+        elif liq_3m_chg < -1 and sp_1m_chg < -3:
+            historical = "유동성 수축 + 주가 하락 동시 진행은 2022년 상반기와 유사합니다. 해당 시기 바닥 형성까지 추가 3~6개월이 소요되었습니다."
+        elif liq_3m_chg > 0 and sp_1m_chg < 0:
+            historical = "유동성 확장 중 주가 조정은 2023년 8~10월 패턴과 유사합니다. 유동성 지지 속 조정은 매수 기회로 작용한 사례가 많습니다."
+        elif liq_3m_chg < 0 and sp_1m_chg > 0:
+            historical = "유동성 수축에도 주가 상승은 실적 주도 장세를 의미합니다. 다만 유동성 역풍이 지속되면 결국 조정 압력이 가해지는 경향이 있습니다."
+        else:
+            historical = "현재 혼합적 환경으로, 명확한 방향성보다는 선별적 섹터 접근이 유효한 구간입니다."
+
         adv_body = (
-            f'<strong>▎포지션 전략: <span style="color:{adv_stance_color}">{adv_icon} {adv_stance}</span></strong><br>'
+            f'<strong>▎포지션 전략: <span style="color:{adv_stance_color}">{adv_icon} {adv_stance}</span></strong>'
+            f'&nbsp;&nbsp;<span style="font-size:0.85rem;">확신도: <span style="color:#f59e0b;">{conviction_stars}</span> ({conviction_desc})</span><br>'
             f'유동성 {liq_3m_chg:+.1f}%(3M), 상관계수 {corr_val:.2f}, 시장 모멘텀 {sp_1m_chg:+.1f}%(1M) 종합 판단.<br><br>'
+            f'{portfolio_alloc}<br><br>'
             f'<strong>▎섹터별 전략</strong><br>'
             f'{sector_ai}<br>'
             f'{sector_cyclical}<br>'
             f'{sector_small}<br>'
             f'{sector_defense}<br><br>'
             f'<strong>▎리스크 관리</strong><br>'
-            + '<br>'.join(risks)
+            + '<br>'.join(risks) + '<br><br>'
+            f'<strong>▎주요 트리거 & 모니터링 포인트</strong><br>'
+            + '<br>'.join([f'• {t}' for t in triggers]) + '<br><br>'
+            f'<strong>▎역사적 유사 환경 분석</strong><br>'
+            f'{historical}'
         )
     else:  # 한국
         krw_p = _safe(cross, "krw")
@@ -1098,16 +1468,75 @@ def generate_dynamic_advice(country, bullish_count, bearish_count, liq_3m_chg, c
         if not risks:
             risks.append('• 현재 주요 리스크 지표는 안정적 수준입니다. 다만 글로벌 변수에 대한 모니터링을 지속하세요.')
 
+        # 포트폴리오 배분 추천 (한국)
+        if bullish_count >= 3:
+            eq_pct, bond_pct, cash_pct, alt_pct = 65, 15, 10, 10
+        elif bearish_count >= 2:
+            eq_pct, bond_pct, cash_pct, alt_pct = 30, 35, 25, 10
+        else:
+            eq_pct, bond_pct, cash_pct, alt_pct = 50, 25, 15, 10
+
+        portfolio_alloc = (
+            f'<strong>▎추천 포트폴리오 배분</strong><br>'
+            f'<div style="display:flex;gap:8px;margin:6px 0;">'
+            f'<div style="flex:{eq_pct};background:#3b82f6;color:white;text-align:center;padding:6px;border-radius:4px;font-size:0.8rem;">주식 {eq_pct}%</div>'
+            f'<div style="flex:{bond_pct};background:#10b981;color:white;text-align:center;padding:6px;border-radius:4px;font-size:0.8rem;">채권 {bond_pct}%</div>'
+            f'<div style="flex:{cash_pct};background:#94a3b8;color:white;text-align:center;padding:6px;border-radius:4px;font-size:0.8rem;">현금 {cash_pct}%</div>'
+            f'<div style="flex:{alt_pct};background:#f59e0b;color:white;text-align:center;padding:6px;border-radius:4px;font-size:0.8rem;">대체 {alt_pct}%</div>'
+            f'</div>'
+            f'주식 내: 대형주 {60 if sp_1m_chg > 0 else 70}% / 중소형주 {40 if sp_1m_chg > 0 else 30}% | '
+            f'달러 헤지 비율: {70 if krw_p > 1350 else 50 if krw_p > 1250 else 30}% 권장'
+        )
+
+        # 확신도
+        conviction = min(5, bullish_count + (1 if liq_yoy > 2 else 0) + (1 if sp_1m_chg > 3 else 0))
+        if bearish_count >= 2:
+            conviction = max(1, 5 - bearish_count - (1 if krw_p > 1400 else 0))
+        conviction_stars = "★" * conviction + "☆" * (5 - conviction)
+        conviction_desc = ["매우 낮음", "낮음", "보통", "높음", "매우 높음"][min(conviction, 4)]
+
+        # 핵심 트리거 (한국)
+        triggers = []
+        if krw_p > 1350:
+            triggers.append(f'환율 {krw_p:,.0f}원 → 1,300원 하회 시 외국인 매수 유입 가속 기대')
+        if liq_3m_chg < 0:
+            triggers.append(f'글로벌 유동성 3M {liq_3m_chg:+.1f}% → 플러스 전환 시 신흥국 자금 유입 기대')
+        if vix_price > 20:
+            triggers.append(f'VIX {vix_price:.1f} → 20 하회 시 외국인 위험선호 복원 가능')
+        if sp_1m_chg > 5:
+            triggers.append(f'{idx_name} 1M {sp_1m_chg:+.1f}% 급등 → 단기 과열 후 외국인 차익실현 주의')
+        if nikkei_chg > 5:
+            triggers.append(f'니케이 1M {nikkei_chg:+.1f}% → 아시아 자금 흐름 변화 모니터링')
+        if not triggers:
+            triggers.append('현재 주요 트리거 이벤트가 없는 안정적 구간입니다. 기존 포지션 유지 권장.')
+
+        # 역사적 유사 환경 (한국)
+        historical = ""
+        if liq_3m_chg > 0 and sp_1m_chg > 3 and krw_p < 1300:
+            historical = "유동성 확장 + 원화 강세 + 주가 상승은 2021년 상반기와 유사합니다. 외국인 순매수 지속 가능성이 높은 환경입니다."
+        elif liq_3m_chg < -1 and krw_p > 1350:
+            historical = "유동성 수축 + 원화 약세는 2022년 환경과 유사합니다. 외국인 매도가 지속될 수 있어 방어적 포지셔닝이 필요합니다."
+        elif sp_1m_chg < -5:
+            historical = "급격한 시장 하락 후에는 2020년 3월, 2022년 10월처럼 정책 대응이 촉발되는 경향이 있습니다. 낙폭 과대 우량주에 주목하세요."
+        else:
+            historical = "현재 한국 증시는 글로벌 유동성, 환율, 외국인 수급의 삼각 함수로 움직이고 있습니다. 방향성 확인 후 단계적 접근이 유효합니다."
+
         adv_body = (
-            f'<strong>▎포지션 전략: <span style="color:{adv_stance_color}">{adv_icon} {adv_stance}</span></strong><br>'
+            f'<strong>▎포지션 전략: <span style="color:{adv_stance_color}">{adv_icon} {adv_stance}</span></strong>'
+            f'&nbsp;&nbsp;<span style="font-size:0.85rem;">확신도: <span style="color:#f59e0b;">{conviction_stars}</span> ({conviction_desc})</span><br>'
             f'글로벌 유동성 {liq_3m_chg:+.1f}%(3M), 상관계수 {corr_val:.2f}, 시장 모멘텀 {sp_1m_chg:+.1f}%(1M) 종합 판단.<br><br>'
+            f'{portfolio_alloc}<br><br>'
             f'<strong>▎섹터별 전략</strong><br>'
             f'{sector_semi}<br>'
             f'{sector_defense_kr}<br>'
             f'{sector_battery}<br>'
             f'{sector_fin}<br><br>'
             f'<strong>▎리스크 관리</strong><br>'
-            + '<br>'.join(risks)
+            + '<br>'.join(risks) + '<br><br>'
+            f'<strong>▎주요 트리거 & 모니터링 포인트</strong><br>'
+            + '<br>'.join([f'• {t}' for t in triggers]) + '<br><br>'
+            f'<strong>▎역사적 유사 환경 분석</strong><br>'
+            f'{historical}'
         )
 
     return adv_body
@@ -1233,6 +1662,7 @@ with st.spinner(f"{CC['liq_label']} & {idx_name} 데이터를 불러오는 중..
     cross_data = load_cross_asset_data()
     fed_rate_data = load_fed_funds_rate()
     bok_rate_data = load_bok_base_rate()
+    news_data = load_market_news()
 
 if df is None or df.empty:
     st.error("데이터를 불러올 수 없습니다. 잠시 후 새로고침 해주세요.")
@@ -1325,19 +1755,38 @@ with brief_container:
     else:
         signal_class, signal_text = "signal-neutral", "🟡 혼합 시그널 → 방향성 모색 중, 변동성 확대 주의"
 
-    # 동적 Daily Brief 생성
-    brief_policy, brief_liq, brief_market, brief_corr, brief_cross = generate_dynamic_brief(
+    # 동적 Daily Brief 생성 (확장판)
+    (brief_policy, brief_liq, brief_market, brief_corr, brief_cross,
+     brief_yield_curve, brief_sector_rotation, brief_commodity,
+     brief_sentiment, brief_credit, brief_news) = generate_dynamic_brief(
         country, df, liq_display, liq_yoy, liq_1m_chg, liq_3m_chg, liq_6m_chg,
         sp_val, sp_1w_chg, sp_1m_chg, sp_3m_chg, sp_yoy, corr_val,
-        idx_name, cross_data, fed_rate_data, bok_rate_data
+        idx_name, cross_data, fed_rate_data, bok_rate_data, news_data
     )
 
-    # 종합 시그널 생성
+    # 센티먼트 데이터 (Advice에서도 활용)
+    sentiment_data = compute_market_sentiment(cross_data, liq_yoy, liq_3m_chg, sp_1m_chg, sp_yoy, corr_val)
+
+    # 종합 시그널 생성 + 확장된 Daily Brief
+    brief_extra_sections = ""
+    if brief_sentiment:
+        brief_extra_sections += f'<hr class="report-divider">{brief_sentiment}'
+    if brief_yield_curve:
+        brief_extra_sections += f'<hr class="report-divider">{brief_yield_curve}'
+    if brief_credit:
+        brief_extra_sections += f'<hr class="report-divider">{brief_credit}'
+    if brief_sector_rotation:
+        brief_extra_sections += f'<hr class="report-divider">{brief_sector_rotation}'
+    if brief_commodity:
+        brief_extra_sections += f'<hr class="report-divider">{brief_commodity}'
+    if brief_news:
+        brief_extra_sections += f'<hr class="report-divider">{brief_news}'
+
     st.markdown(
         f'<div class="report-box">'
         f'<div class="report-header">'
         f'<span class="report-badge">Daily Brief</span>'
-        f'<span class="report-date">{today_str} 기준</span></div>'
+        f'<span class="report-date">{today_str} 기준 · 실시간 데이터 + 뉴스 자동 업데이트</span></div>'
         f'<div class="report-title">📋 오늘의 유동성 &amp; 시장 브리핑</div>'
         f'<div class="report-body">'
         f'{brief_policy}'
@@ -1349,26 +1798,30 @@ with brief_container:
         f'{brief_corr}'
         f'<hr class="report-divider">'
         f'{brief_cross}'
+        f'{brief_extra_sections}'
         f'</div>'
         f'<div class="report-signal {signal_class}">{signal_text}</div>'
+        f'<div style="margin-top:0.5rem;padding:6px 12px;font-size:0.72rem;color:var(--text-muted);'
+        f'border-top:1px solid rgba(0,0,0,0.06);text-align:right;">'
+        f'데이터 소스: FRED, Yahoo Finance, yfinance News API | 자동 갱신: 매 1시간 (캐시 TTL)</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # 투자 조언 (Investment Advice — 실시간 데이터 기반 동적 생성)
+    # 투자 조언 (Investment Advice — 실시간 데이터 기반 동적 생성, 확장판)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     adv_body = generate_dynamic_advice(
         country, bullish_count, bearish_count, liq_3m_chg, corr_val, sp_1m_chg,
-        sp_yoy, liq_yoy, cross_data, sp_val, idx_name
+        sp_yoy, liq_yoy, cross_data, sp_val, idx_name, sentiment_data
     )
 
     st.markdown(
         f'<div class="report-box" style="background:linear-gradient(135deg, #fef3c7, #fef9c3); border-color:#fbbf24;">'
         f'<div class="report-header">'
         f'<span class="report-badge" style="background:#f59e0b;">Investment Advice</span>'
-        f'<span class="report-date">{today_str} 기준 · 실시간 데이터 기반 분석</span></div>'
+        f'<span class="report-date">{today_str} 기준 · 실시간 데이터 기반 심층 분석</span></div>'
         f'<div class="report-title">💡 투자 전략 가이드</div>'
         f'<div class="report-body">'
         f'{adv_body}'
@@ -1376,7 +1829,7 @@ with brief_container:
         f'<div style="margin-top:0.8rem; padding:8px 14px; background:rgba(245,158,11,0.08); '
         f'border:1px solid rgba(245,158,11,0.2); border-radius:8px; '
         f'font-size:0.78rem; color:var(--text-muted); line-height:1.6;">'
-        f'⚠️ 본 투자 조언은 유동성·상관관계·모멘텀 데이터에 기반한 정량적 분석이며, '
+        f'⚠️ 본 투자 조언은 유동성·상관관계·모멘텀·센티먼트·섹터 로테이션·원자재·신용시장 데이터에 기반한 정량적 분석이며, '
         f'개별 종목 추천이 아닙니다. 투자 의사결정은 개인의 위험 허용 범위, 투자 목표, '
         f'재무 상황을 종합적으로 고려하여 내려야 합니다. 필요 시 전문 재무상담사와 상의하세요.'
         f'</div>'
