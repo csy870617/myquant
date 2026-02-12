@@ -25,30 +25,21 @@ except Exception:
     pass  # 파일이 없거나 구버전 Streamlit일 경우 무시
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 자동 새로고침 (PST 07:00/16:00 = 하루 2회)
+# 자동 새로고침 (5분 간격 실시간 업데이트)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REFRESH_INTERVAL_SEC = 300  # 5분마다 자동 새로고침
+
 def get_next_refresh():
-    """다음 새로고침 시각까지 남은 초 계산 (PST 07:00/16:00)"""
+    """다음 새로고침 시각 계산 (5분 간격)"""
     utc_now = datetime.now(ZoneInfo("UTC"))
-    utc_hours = [0, 15]  # PST 16:00→UTC 00:00, PST 07:00→UTC 15:00
-
-    targets = []
-    for h in utc_hours:
-        t = utc_now.replace(hour=h, minute=0, second=0, microsecond=0)
-        if t <= utc_now:
-            t += timedelta(days=1)
-        targets.append(t)
-
-    next_t = min(targets)
-    secs = max(int((next_t - utc_now).total_seconds()), 60)
+    next_t = utc_now + timedelta(seconds=REFRESH_INTERVAL_SEC)
     local_next = next_t.astimezone(ZoneInfo("Asia/Seoul"))
-    return local_next, secs
+    return local_next, REFRESH_INTERVAL_SEC
 
 NEXT_REFRESH_TIME, REFRESH_SECS = get_next_refresh()
 
-auto_interval = min(REFRESH_SECS * 1000, 3600_000)
 st.markdown(
-    f'<meta http-equiv="refresh" content="{min(REFRESH_SECS, 3600)}">',
+    f'<meta http-equiv="refresh" content="{REFRESH_INTERVAL_SEC}">',
     unsafe_allow_html=True,
 )
 
@@ -531,7 +522,7 @@ COUNTRY_CONFIG = {
 }
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def load_data(ticker, fred_liq, fred_rec, liq_divisor):
     try:
         end_dt = datetime.now()
@@ -624,7 +615,7 @@ def load_data(ticker, fred_liq, fred_rec, liq_divisor):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 크로스에셋 & 매크로 데이터 (Daily Brief / Investment Advice 용)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def load_cross_asset_data():
     """금, 은, BTC, ETH, 10Y 국채, DXY, 니케이, 원/달러 등 크로스에셋 실시간 데이터"""
     import yfinance as yf
@@ -692,7 +683,7 @@ def load_cross_asset_data():
     return result
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def load_fed_funds_rate():
     """FRED에서 실효 연방기금금리(DFF) 로드"""
     try:
@@ -706,7 +697,7 @@ def load_fed_funds_rate():
         return None
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def load_bok_base_rate():
     """한국은행 기준금리 프록시 — FRED IRSTCI01KRM156N (한국 단기금리)"""
     try:
@@ -719,7 +710,7 @@ def load_bok_base_rate():
         return None
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def load_market_news():
     """yfinance를 활용한 주요 시장 관련 뉴스 수집"""
     import yfinance as yf
@@ -964,7 +955,7 @@ def _chg_color(val):
 def generate_dynamic_brief(country, df, liq_display, liq_yoy, liq_1m_chg, liq_3m_chg, liq_6m_chg,
                            sp_val, sp_1w_chg, sp_1m_chg, sp_3m_chg, sp_yoy, corr_val,
                            idx_name, cross, fed_rate, bok_rate, news_data=None):
-    """Daily Brief 전체를 실시간 데이터 기반으로 동적 생성 (뉴스 및 심층분석 포함)"""
+    """Daily Brief 전체를 실시간 데이터 기반으로 동적 생성 (심층 유동성-지수 분석 + 뉴스 요약 포함)"""
 
     # ── 정책 현황 ──
     if country == "🇺🇸 미국":
@@ -1126,12 +1117,38 @@ def generate_dynamic_brief(country, df, liq_display, liq_yoy, liq_1m_chg, liq_3m
                f'외국인 수급 방향이 핵심 변수입니다.')
         )
 
-    # ── 상관관계 진단 ──
+    # ── 상관관계 진단 (심층 분석) ──
+    # 유동성-지수 선행/후행 관계 분석
+    liq_leads_market = ""
+    if liq_3m_chg > 1 and sp_1m_chg > 0:
+        liq_leads_market = "유동성 확장이 시장 상승을 선행하는 전형적 패턴이 확인됩니다. 유동성이 먼저 움직이고 주가가 1~3개월 뒤따르는 구조입니다."
+    elif liq_3m_chg > 1 and sp_1m_chg < 0:
+        liq_leads_market = "유동성은 확장 중이나 주가가 조정을 받고 있습니다. 역사적으로 이 괴리는 2~4주 내 주가 반등으로 해소되는 경향이 높습니다 (2019.8, 2023.10 사례)."
+    elif liq_3m_chg < -1 and sp_1m_chg > 0:
+        liq_leads_market = "유동성은 수축하고 있으나 주가가 아직 상승 관성을 유지하고 있습니다. 실적 장세 가능성이 있으나, 유동성 역풍이 지속되면 3~6개월 내 조정 위험이 높아집니다."
+    elif liq_3m_chg < -1 and sp_1m_chg < 0:
+        liq_leads_market = "유동성 수축과 주가 하락이 동시에 진행 중입니다. 이는 2022년 상반기와 유사한 패턴으로, 유동성 방향 전환이 확인될 때까지 방어적 포지션이 필요합니다."
+    else:
+        liq_leads_market = "유동성과 주가가 동조적 흐름을 보이고 있어, 현재 시장은 유동성 환경을 충실히 반영하고 있습니다."
+
+    # 상관계수 변화 방향 감지
+    corr_series = df["Corr_90d"].dropna()
+    corr_30d_ago = corr_series.iloc[-21] if len(corr_series) > 21 else corr_val
+    corr_direction = corr_val - corr_30d_ago
+    corr_dir_text = ""
+    if abs(corr_direction) > 0.1:
+        if corr_direction > 0:
+            corr_dir_text = f"상관계수가 1개월 전 대비 <strong>{corr_direction:+.3f}</strong> 상승하며 유동성-주가 동조성이 강화되고 있습니다."
+        else:
+            corr_dir_text = f"상관계수가 1개월 전 대비 <strong>{corr_direction:+.3f}</strong> 하락하며 유동성-주가 동조성이 약화되고 있습니다."
+    else:
+        corr_dir_text = f"상관계수 변화({corr_direction:+.3f})가 미미하여 기존 추세가 유지되고 있습니다."
+
     brief_corr = (
-        f'<strong>▎상관관계 진단</strong><br>'
+        f'<strong>▎유동성-지수 상관관계 심층 진단</strong><br>'
         f'90일 롤링 상관계수 <span class="hl">{corr_val:.3f}</span>. '
         + ('유동성과 주가가 강한 동행 관계를 유지 중입니다. '
-           '이는 중앙은행 유동성 공급이 주가를 직접적으로 지지하는 "유동성 장세" 구간임을 의미합니다. '
+           '이는 중앙은행 유동성 공급이 주가를 직접적으로 지지하는 <strong>"유동성 장세"</strong> 구간임을 의미합니다. '
            '유동성 방향 전환 시 주가도 동반 조정될 수 있어 Fed 정책 변화에 민감하게 대응해야 합니다.'
            if corr_val > 0.5
            else '유동성-주가 동조성이 약화된 구간입니다. '
@@ -1141,6 +1158,18 @@ def generate_dynamic_brief(country, df, liq_display, liq_yoy, liq_1m_chg, liq_3m
            else '음의 상관으로 전환된 특이 구간입니다. '
                 '유동성이 증가하는데 주가가 하락하거나 그 반대 상황으로, '
                 '시장이 유동성 외 강력한 악재(지정학, 신용 이벤트 등)에 반응하고 있음을 시사합니다.')
+        + f'<br><br>'
+        f'<strong>추세 변화:</strong> {corr_dir_text}<br><br>'
+        f'<strong>선행/후행 분석:</strong> {liq_leads_market}<br><br>'
+        f'<strong>투자 시사점:</strong> '
+        + (f'상관계수 {corr_val:.2f} 환경에서 유동성 방향({liq_3m_chg:+.1f}%)이 곧 시장 방향입니다. '
+           f'본원통화 증감률 변화를 선행 지표로 활용하세요.'
+           if corr_val > 0.5
+           else f'상관계수 {corr_val:.2f}로 유동성 외 요인이 지배적입니다. '
+                f'실적 시즌, 정책 이벤트, 섹터별 모멘텀에 주목하세요.'
+           if corr_val > 0
+           else f'음의 상관({corr_val:.2f})은 시장 스트레스 또는 구조적 전환을 시사합니다. '
+                f'포지션 축소 후 방향 확인을 권장합니다.')
     )
 
     # ── 글로벌 크로스에셋 모니터 (완전 동적) ──
@@ -1246,28 +1275,123 @@ def generate_dynamic_brief(country, df, liq_display, liq_yoy, liq_1m_chg, liq_3m
            else f'<strong>시사점:</strong> 하이일드·장기채 동반 하락 → 유동성 위축 또는 포트폴리오 리밸런싱에 의한 매도 압력이 존재합니다.')
     )
 
-    # ── 관련 뉴스 ──
+    # ── 관련 뉴스 & 이슈 (내용 요약) ──
     brief_news = ""
     if news_data:
         news_lines = []
-        for n in news_data[:6]:
+        for n in news_data[:8]:
             publisher = n.get("publisher", "")
-            link = n.get("link", "")
             title = n.get("title", "")
+            ticker_src = n.get("ticker", "")
             if title:
-                if link:
-                    news_lines.append(f'• <a href="{link}" target="_blank" style="color:#2563eb;text-decoration:none;">{title}</a> <span style="color:var(--text-muted);font-size:0.75rem;">— {publisher}</span>')
+                # 뉴스 카테고리 판별
+                category = ""
+                if any(k in ticker_src for k in ["^GSPC", "^IXIC", "^DJI"]):
+                    category = "미국 증시"
+                elif "^KS11" in ticker_src:
+                    category = "한국 증시"
+                elif "GC=F" in ticker_src:
+                    category = "귀금속"
+                elif "BTC" in ticker_src:
+                    category = "크립토"
                 else:
-                    news_lines.append(f'• {title} <span style="color:var(--text-muted);font-size:0.75rem;">— {publisher}</span>')
+                    category = "매크로"
+
+                # 시장 영향도 추론
+                impact = ""
+                title_lower = title.lower()
+                if any(w in title_lower for w in ["surge", "soar", "rally", "jump", "bull", "record", "high", "상승", "급등", "신고"]):
+                    impact = '<span style="color:var(--accent-green);font-weight:600;">▲ 긍정적</span>'
+                elif any(w in title_lower for w in ["fall", "drop", "crash", "plunge", "bear", "sell", "fear", "하락", "급락", "폭락", "위기"]):
+                    impact = '<span style="color:var(--accent-red);font-weight:600;">▼ 부정적</span>'
+                elif any(w in title_lower for w in ["fed", "rate", "inflation", "tariff", "금리", "인플레", "관세"]):
+                    impact = '<span style="color:var(--accent-amber);font-weight:600;">◆ 정책 변수</span>'
+                else:
+                    impact = '<span style="color:var(--text-muted);font-weight:600;">— 중립</span>'
+
+                news_lines.append(
+                    f'<div style="margin-bottom:6px;padding:6px 8px;background:rgba(0,0,0,0.02);border-radius:6px;">'
+                    f'<span style="font-size:0.68rem;color:var(--accent-blue);font-weight:700;">[{category}]</span> '
+                    f'<strong>{title}</strong><br>'
+                    f'<span style="font-size:0.76rem;color:var(--text-muted);">{publisher} · {impact}</span>'
+                    f'</div>'
+                )
         if news_lines:
             brief_news = (
-                f'<strong>▎관련 뉴스 & 이슈</strong><br>'
-                + '<br>'.join(news_lines)
+                f'<strong>▎관련 뉴스 & 이슈 요약</strong><br>'
+                f'<div style="margin-top:6px;">'
+                + ''.join(news_lines)
+                + '</div>'
             )
+
+    # ── 유동성 레짐 & 시장 단계 분석 ──
+    # 유동성 레짐 판별 (4단계)
+    if liq_3m_chg > 2 and liq_1m_chg > 0:
+        liq_regime = "적극적 확장 (Active Expansion)"
+        regime_color = "#16a34a"
+        regime_desc = (
+            "본원통화가 가속적으로 증가하고 있습니다. "
+            "이 레짐에서 주식·크립토·원자재 등 위험자산은 역사적으로 강한 상승세를 보였습니다. "
+            "2020년 하반기, 2023년 Q4가 대표적 사례입니다."
+        )
+        regime_strategy = "위험자산 비중 확대, 성장주·소형주 선호, 채권 듀레이션 축소"
+    elif liq_3m_chg > 0 and liq_1m_chg >= -0.5:
+        liq_regime = "완만한 확장 (Moderate Expansion)"
+        regime_color = "#65a30d"
+        regime_desc = (
+            "유동성이 점진적으로 증가하고 있습니다. "
+            "시장에 우호적이나 폭발적 상승보다는 안정적 우상향을 기대할 수 있습니다. "
+            "선별적 위험자산 배분이 유효합니다."
+        )
+        regime_strategy = "균형 포트폴리오 유지, 퀄리티 성장주 중심, 분할 매수 접근"
+    elif liq_3m_chg > -2 and liq_3m_chg <= 0:
+        liq_regime = "보합/초기 수축 (Neutral/Early Contraction)"
+        regime_color = "#ca8a04"
+        regime_desc = (
+            "유동성이 보합 또는 초기 수축 단계에 있습니다. "
+            "이 구간은 시장 방향성이 불투명하며, 유동성 외 요인(실적·정책)에 민감하게 반응합니다. "
+            "변동성 확대에 대비한 포지션 관리가 핵심입니다."
+        )
+        regime_strategy = "방어적 자산 비중 상향, 현금 비중 확대, 헤지 전략 고려"
+    else:
+        liq_regime = "적극적 수축 (Active Contraction)"
+        regime_color = "#dc2626"
+        regime_desc = (
+            "본원통화가 뚜렷하게 감소하고 있습니다. "
+            "이 레짐에서 위험자산은 역사적으로 큰 조정을 겪었습니다 (2022년 QT 시기). "
+            "유동성 방향 전환 신호가 나올 때까지 보수적 운용이 필요합니다."
+        )
+        regime_strategy = "현금·단기채 비중 극대화, 위험자산 최소화, 역발상 매수는 유동성 전환 확인 후"
+
+    # 유동성-지수 괴리도 (Divergence Score)
+    liq_norm_latest = df["Liquidity_norm"].iloc[-1] if "Liquidity_norm" in df.columns else 50
+    sp_norm_latest = df["SP500_norm"].iloc[-1] if "SP500_norm" in df.columns else 50
+    divergence = sp_norm_latest - liq_norm_latest
+    div_comment = ""
+    if divergence > 20:
+        div_comment = f"주가가 유동성 대비 <strong>과열 상태</strong>(괴리도 {divergence:+.1f}pt)입니다. 유동성 대비 주가가 높아 조정 가능성에 유의하세요."
+    elif divergence > 10:
+        div_comment = f"주가가 유동성보다 <strong>다소 앞서</strong> 있습니다(괴리도 {divergence:+.1f}pt). 실적 확인을 통한 정당화가 필요합니다."
+    elif divergence < -20:
+        div_comment = f"주가가 유동성 대비 <strong>과도하게 할인</strong> 상태(괴리도 {divergence:+.1f}pt)입니다. 유동성이 지지하는 가격 대비 저평가 구간으로, 매수 기회일 수 있습니다."
+    elif divergence < -10:
+        div_comment = f"주가가 유동성보다 <strong>다소 뒤처져</strong> 있습니다(괴리도 {divergence:+.1f}pt). 유동성 지지 수준으로의 회귀를 기대할 수 있습니다."
+    else:
+        div_comment = f"주가와 유동성이 <strong>균형 상태</strong>(괴리도 {divergence:+.1f}pt)입니다. 유동성 수준에 맞는 적정 가격대입니다."
+
+    brief_regime = (
+        f'<strong>▎유동성 레짐 & 시장 단계 분석</strong><br>'
+        f'<div style="display:inline-flex;align-items:center;gap:8px;margin:6px 0;">'
+        f'<span style="background:{regime_color};color:white;padding:4px 12px;border-radius:6px;'
+        f'font-size:0.82rem;font-weight:700;">{liq_regime}</span></div><br><br>'
+        f'{regime_desc}<br><br>'
+        f'<strong>전략적 대응:</strong> {regime_strategy}<br><br>'
+        f'<strong>유동성-지수 괴리도:</strong> {div_comment}'
+    )
 
     return (brief_policy, brief_liq, brief_market, brief_corr, brief_cross,
             brief_yield_curve, brief_sector_rotation, brief_commodity,
-            brief_sentiment, brief_credit, brief_news)
+            brief_sentiment, brief_credit, brief_news, brief_regime)
 
 
 def generate_dynamic_advice(country, bullish_count, bearish_count, liq_3m_chg, corr_val, sp_1m_chg,
@@ -1612,12 +1736,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # 새로고침 상태 바
-now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-next_str = NEXT_REFRESH_TIME.strftime("%m/%d %H:%M KST")
+now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+next_str = NEXT_REFRESH_TIME.strftime("%H:%M:%S KST")
 st.markdown(
     f'<div class="refresh-bar">'
     f'<span class="refresh-dot"></span>'
-    f'갱신: {now_str} · 다음: {next_str}'
+    f'실시간 갱신: {now_str} · 다음 업데이트: {next_str} (5분 간격)'
     f'</div>',
     unsafe_allow_html=True,
 )
@@ -1758,7 +1882,7 @@ with brief_container:
     # 동적 Daily Brief 생성 (확장판)
     (brief_policy, brief_liq, brief_market, brief_corr, brief_cross,
      brief_yield_curve, brief_sector_rotation, brief_commodity,
-     brief_sentiment, brief_credit, brief_news) = generate_dynamic_brief(
+     brief_sentiment, brief_credit, brief_news, brief_regime) = generate_dynamic_brief(
         country, df, liq_display, liq_yoy, liq_1m_chg, liq_3m_chg, liq_6m_chg,
         sp_val, sp_1w_chg, sp_1m_chg, sp_3m_chg, sp_yoy, corr_val,
         idx_name, cross_data, fed_rate_data, bok_rate_data, news_data
@@ -1769,6 +1893,8 @@ with brief_container:
 
     # 종합 시그널 생성 + 확장된 Daily Brief
     brief_extra_sections = ""
+    if brief_regime:
+        brief_extra_sections += f'<hr class="report-divider">{brief_regime}'
     if brief_sentiment:
         brief_extra_sections += f'<hr class="report-divider">{brief_sentiment}'
     if brief_yield_curve:
@@ -1786,8 +1912,8 @@ with brief_container:
         f'<div class="report-box">'
         f'<div class="report-header">'
         f'<span class="report-badge">Daily Brief</span>'
-        f'<span class="report-date">{today_str} 기준 · 실시간 데이터 + 뉴스 자동 업데이트</span></div>'
-        f'<div class="report-title">📋 오늘의 유동성 &amp; 시장 브리핑</div>'
+        f'<span class="report-date">{today_str} {datetime.now().strftime("%H:%M")} 기준 · 5분 간격 실시간 갱신</span></div>'
+        f'<div class="report-title">📋 유동성 × 시장 실시간 브리핑</div>'
         f'<div class="report-body">'
         f'{brief_policy}'
         f'<hr class="report-divider">'
@@ -1803,7 +1929,7 @@ with brief_container:
         f'<div class="report-signal {signal_class}">{signal_text}</div>'
         f'<div style="margin-top:0.5rem;padding:6px 12px;font-size:0.72rem;color:var(--text-muted);'
         f'border-top:1px solid rgba(0,0,0,0.06);text-align:right;">'
-        f'데이터 소스: FRED, Yahoo Finance, yfinance News API | 자동 갱신: 매 1시간 (캐시 TTL)</div>'
+        f'데이터 소스: FRED, Yahoo Finance, yfinance News API | 실시간 갱신: 5분 간격</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
@@ -1821,7 +1947,7 @@ with brief_container:
         f'<div class="report-box" style="background:linear-gradient(135deg, #fef3c7, #fef9c3); border-color:#fbbf24;">'
         f'<div class="report-header">'
         f'<span class="report-badge" style="background:#f59e0b;">Investment Advice</span>'
-        f'<span class="report-date">{today_str} 기준 · 실시간 데이터 기반 심층 분석</span></div>'
+        f'<span class="report-date">{today_str} {datetime.now().strftime("%H:%M")} 기준 · 5분 간격 실시간 갱신</span></div>'
         f'<div class="report-title">💡 투자 전략 가이드</div>'
         f'<div class="report-body">'
         f'{adv_body}'
@@ -2400,7 +2526,7 @@ st.markdown(tl_html + "</div>", unsafe_allow_html=True)
 st.markdown(
     f'<div class="app-footer">'
     f'데이터: {CC["data_src"]} · 업데이트: {df.index.max().strftime("%Y-%m-%d")}'
-    f'<br>자동 갱신 2회/일 (PST 07/16시 · KST 00/09시) · 본 페이지는 투자 조언이 아닙니다'
+    f'<br>실시간 갱신: 5분 간격 · 본 페이지는 투자 조언이 아닙니다'
     f'</div>',
     unsafe_allow_html=True,
 )
