@@ -39,7 +39,9 @@ def get_next_refresh():
 NEXT_REFRESH_TIME, REFRESH_SECS = get_next_refresh()
 
 st.markdown(
-    f'<meta http-equiv="refresh" content="{REFRESH_INTERVAL_SEC}">',
+    f'<meta http-equiv="refresh" content="{REFRESH_INTERVAL_SEC}">'
+    f'<meta name="description" content="중앙은행 유동성과 주가지수의 상관관계를 실시간으로 분석하는 대시보드입니다.">'
+    f'<script>document.documentElement.setAttribute("lang", "ko");</script>',
     unsafe_allow_html=True,
 )
 
@@ -53,7 +55,7 @@ st.markdown("""
 
 :root {
     --bg: #f8fafc; --card: #ffffff; --border: #e2e8f0;
-    --text-primary: #1e293b; --text-secondary: #64748b; --text-muted: #94a3b8;
+    --text-primary: #1e293b; --text-secondary: #475569; --text-muted: #64748b;
     --accent-blue: #3b82f6; --accent-red: #ef4444; --accent-green: #10b981;
     --accent-purple: #8b5cf6; --accent-amber: #f59e0b;
 }
@@ -62,6 +64,33 @@ html, body, [data-testid="stAppViewContainer"] {
     background: var(--bg) !important; color: var(--text-primary);
 }
 [data-testid="stHeader"] { background: transparent !important; }
+
+/* ── 접근성: 스크린 리더 전용 텍스트 ── */
+.sr-only {
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+
+/* ── 접근성: 건너뛰기 내비게이션 ── */
+.skip-link {
+    position: absolute; top: -100%; left: 50%; transform: translateX(-50%);
+    background: var(--accent-blue); color: #fff; padding: 12px 24px;
+    border-radius: 0 0 8px 8px; font-size: 0.9rem; font-weight: 700;
+    z-index: 9999; text-decoration: none; transition: top 0.2s;
+}
+.skip-link:focus { top: 0; outline: 3px solid var(--accent-amber); }
+
+/* ── 접근성: 포커스 스타일 ── */
+*:focus-visible {
+    outline: 3px solid var(--accent-blue) !important;
+    outline-offset: 2px !important;
+}
+a:focus-visible, button:focus-visible, [tabindex]:focus-visible {
+    outline: 3px solid var(--accent-blue) !important;
+    outline-offset: 2px !important;
+    border-radius: 4px;
+}
 
 /* 기본 컨테이너 여백 */
 .block-container { 
@@ -275,19 +304,34 @@ footer { display: none !important; }
 
 /* ━━ 초소형 화면 (≤480px) ━━ */
 @media (max-width: 480px) {
-    .block-container { 
-        padding-left: 0.6rem !important; 
+    .block-container {
+        padding-left: 0.6rem !important;
         padding-right: 0.6rem !important;
     }
     .page-header-icon { width: 32px; height: 32px; font-size: 1rem; }
     .page-title { font-size: 1.05rem; letter-spacing: -0.3px; }
-    .page-desc { font-size: 0.75rem; margin-bottom: 0.6rem; }
+    .page-desc { font-size: 0.78rem; margin-bottom: 0.6rem; }
     .kpi-value { font-size: 0.95rem; }
-    .kpi-label { font-size: 0.6rem; letter-spacing: 0.3px; }
+    .kpi-label { font-size: 0.7rem; letter-spacing: 0.3px; }
     .report-title { font-size: 0.88rem; }
     .report-body { font-size: 0.78rem; line-height: 1.6; }
-    .tl-date { min-width: 60px; font-size: 0.62rem; }
-    .tl-desc { display: none; }
+    .tl-date { min-width: 60px; font-size: 0.7rem; }
+    .tl-desc { font-size: 0.7rem; }
+}
+
+/* ── 접근성: 사용자 설정 존중 ── */
+@media (prefers-reduced-motion: reduce) {
+    .refresh-dot { animation: none; }
+    * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
+
+/* ── 접근성: 고대비 모드 ── */
+@media (forced-colors: active) {
+    .kpi { border: 2px solid CanvasText; }
+    .kpi::before { background: Highlight; }
+    .report-box { border: 2px solid CanvasText; }
+    .card { border: 2px solid CanvasText; }
+    .tl-dir { border: 1px solid CanvasText; }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -1725,23 +1769,27 @@ def ax(extra=None):
 # 헤더
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 st.markdown("""
+<a href="#main-content" class="skip-link">본문으로 건너뛰기</a>
+<header role="banner">
 <div class="page-header">
-    <div class="page-header-icon">📊</div>
-    <div class="page-title">유동성 × 시장 분석기</div>
+    <div class="page-header-icon" aria-hidden="true">📊</div>
+    <h1 class="page-title">유동성 × 시장 분석기</h1>
 </div>
-<div class="page-desc">
+<p class="page-desc">
     중앙은행 통화량과 주가지수의 상관관계를 분석합니다.<br>
     유동성 흐름이 주가에 미치는 영향을 시각적으로 확인하세요.
-</div>
+</p>
+</header>
+<div id="main-content"></div>
 """, unsafe_allow_html=True)
 
 # 새로고침 상태 바
 now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 next_str = NEXT_REFRESH_TIME.strftime("%H:%M:%S KST")
 st.markdown(
-    f'<div class="refresh-bar">'
-    f'<span class="refresh-dot"></span>'
-    f'실시간 갱신: {now_str} · 다음 업데이트: {next_str} (5분 간격)'
+    f'<div class="refresh-bar" role="status" aria-live="polite" aria-label="실시간 갱신 상태">'
+    f'<span class="refresh-dot" aria-hidden="true"></span>'
+    f'<span>실시간 갱신: <time datetime="{datetime.now().strftime("%Y-%m-%dT%H:%M:%S")}">{now_str}</time> · 다음 업데이트: {next_str} (5분 간격)</span>'
     f'</div>',
     unsafe_allow_html=True,
 )
@@ -1808,7 +1856,8 @@ with kpi_container:
     def delta_html(val):
         cls = "up" if val >= 0 else "down"
         arrow = "▲" if val >= 0 else "▼"
-        return f'<div class="kpi-delta {cls}">{arrow} YoY {val:+.1f}%</div>'
+        direction = "상승" if val >= 0 else "하락"
+        return f'<div class="kpi-delta {cls}" aria-label="전년 대비 {val:+.1f}% {direction}">{arrow} YoY {val:+.1f}%</div>'
 
     corr_cls = "up" if corr_val >= 0.3 else "down"
     corr_desc = "강한 양의 상관" if corr_val >= 0.5 else ("약한 양의 상관" if corr_val >= 0 else "음의 상관")
@@ -1816,28 +1865,31 @@ with kpi_container:
     liq_display = f"{CC['liq_prefix']}{liq_val:,.0f}{CC['liq_suffix']}"
 
     st.markdown(f"""
-    <div class="kpi-grid">
-        <div class="kpi blue">
-            <div class="kpi-label">💵 {CC['liq_label']}</div>
+    <section aria-label="핵심 지표 요약">
+    <h2 class="sr-only">핵심 지표 (KPI)</h2>
+    <div class="kpi-grid" role="list">
+        <div class="kpi blue" role="listitem" aria-label="{CC['liq_label']}: {liq_display}, 전년 대비 {liq_yoy:+.1f}%">
+            <div class="kpi-label"><span aria-hidden="true">💵</span> {CC['liq_label']}</div>
             <div class="kpi-value">{liq_display}</div>
             {delta_html(liq_yoy)}
         </div>
-        <div class="kpi red">
-            <div class="kpi-label">📈 {idx_name}</div>
+        <div class="kpi red" role="listitem" aria-label="{idx_name}: {sp_val:,.0f}, 전년 대비 {sp_yoy:+.1f}%">
+            <div class="kpi-label"><span aria-hidden="true">📈</span> {idx_name}</div>
             <div class="kpi-value">{sp_val:,.0f}</div>
             {delta_html(sp_yoy)}
         </div>
-        <div class="kpi green">
-            <div class="kpi-label">🔗 90일 상관계수</div>
+        <div class="kpi green" role="listitem" aria-label="90일 상관계수: {corr_val:.3f}, {corr_desc}">
+            <div class="kpi-label"><span aria-hidden="true">🔗</span> 90일 상관계수</div>
             <div class="kpi-value">{corr_val:.3f}</div>
             <div class="kpi-delta {corr_cls}">{corr_desc}</div>
         </div>
-        <div class="kpi purple">
-            <div class="kpi-label">📅 데이터 범위</div>
+        <div class="kpi purple" role="listitem" aria-label="데이터 범위: {df.index.min().strftime('%Y.%m')}부터 {df.index.max().strftime('%Y.%m')}까지, 총 {len(df):,}일">
+            <div class="kpi-label"><span aria-hidden="true">📅</span> 데이터 범위</div>
             <div class="kpi-value" style="font-size:1.05rem">{df.index.min().strftime('%Y.%m')} – {df.index.max().strftime('%Y.%m')}</div>
             <div class="kpi-delta up">{len(df):,}일</div>
         </div>
     </div>
+    </section>
     """, unsafe_allow_html=True)
 
 
@@ -1909,28 +1961,30 @@ with brief_container:
         brief_extra_sections += f'<hr class="report-divider">{brief_news}'
 
     st.markdown(
+        f'<article role="article" aria-label="일일 시장 브리핑">'
         f'<div class="report-box">'
         f'<div class="report-header">'
         f'<span class="report-badge">Daily Brief</span>'
-        f'<span class="report-date">{today_str} {datetime.now().strftime("%H:%M")} 기준 · 5분 간격 실시간 갱신</span></div>'
-        f'<div class="report-title">📋 유동성 × 시장 실시간 브리핑</div>'
+        f'<time class="report-date" datetime="{datetime.now().strftime("%Y-%m-%dT%H:%M")}">{today_str} {datetime.now().strftime("%H:%M")} 기준 · 5분 간격 실시간 갱신</time></div>'
+        f'<h2 class="report-title"><span aria-hidden="true">📋</span> 유동성 × 시장 실시간 브리핑</h2>'
         f'<div class="report-body">'
         f'{brief_policy}'
-        f'<hr class="report-divider">'
+        f'<hr class="report-divider" aria-hidden="true">'
         f'{brief_liq}'
-        f'<hr class="report-divider">'
+        f'<hr class="report-divider" aria-hidden="true">'
         f'{brief_market}'
-        f'<hr class="report-divider">'
+        f'<hr class="report-divider" aria-hidden="true">'
         f'{brief_corr}'
-        f'<hr class="report-divider">'
+        f'<hr class="report-divider" aria-hidden="true">'
         f'{brief_cross}'
         f'{brief_extra_sections}'
         f'</div>'
-        f'<div class="report-signal {signal_class}">{signal_text}</div>'
+        f'<div class="report-signal {signal_class}" role="status" aria-live="polite">{signal_text}</div>'
         f'<div style="margin-top:0.5rem;padding:6px 12px;font-size:0.72rem;color:var(--text-muted);'
         f'border-top:1px solid rgba(0,0,0,0.06);text-align:right;">'
         f'데이터 소스: FRED, Yahoo Finance, yfinance News API | 실시간 갱신: 5분 간격</div>'
-        f'</div>',
+        f'</div>'
+        f'</article>',
         unsafe_allow_html=True,
     )
 
@@ -1944,22 +1998,24 @@ with brief_container:
     )
 
     st.markdown(
+        f'<article role="article" aria-label="투자 전략 가이드">'
         f'<div class="report-box" style="background:linear-gradient(135deg, #fef3c7, #fef9c3); border-color:#fbbf24;">'
         f'<div class="report-header">'
         f'<span class="report-badge" style="background:#f59e0b;">Investment Advice</span>'
-        f'<span class="report-date">{today_str} {datetime.now().strftime("%H:%M")} 기준 · 5분 간격 실시간 갱신</span></div>'
-        f'<div class="report-title">💡 투자 전략 가이드</div>'
+        f'<time class="report-date" datetime="{datetime.now().strftime("%Y-%m-%dT%H:%M")}">{today_str} {datetime.now().strftime("%H:%M")} 기준 · 5분 간격 실시간 갱신</time></div>'
+        f'<h2 class="report-title"><span aria-hidden="true">💡</span> 투자 전략 가이드</h2>'
         f'<div class="report-body">'
         f'{adv_body}'
         f'</div>'
-        f'<div style="margin-top:0.8rem; padding:8px 14px; background:rgba(245,158,11,0.08); '
+        f'<div role="alert" style="margin-top:0.8rem; padding:8px 14px; background:rgba(245,158,11,0.08); '
         f'border:1px solid rgba(245,158,11,0.2); border-radius:8px; '
         f'font-size:0.78rem; color:var(--text-muted); line-height:1.6;">'
-        f'⚠️ 본 투자 조언은 유동성·상관관계·모멘텀·센티먼트·섹터 로테이션·원자재·신용시장 데이터에 기반한 정량적 분석이며, '
+        f'<span aria-hidden="true">⚠️</span> 본 투자 조언은 유동성·상관관계·모멘텀·센티먼트·섹터 로테이션·원자재·신용시장 데이터에 기반한 정량적 분석이며, '
         f'개별 종목 추천이 아닙니다. 투자 의사결정은 개인의 위험 허용 범위, 투자 목표, '
         f'재무 상황을 종합적으로 고려하여 내려야 합니다. 필요 시 전문 재무상담사와 상의하세요.'
         f'</div>'
-        f'</div>',
+        f'</div>'
+        f'</article>',
         unsafe_allow_html=True,
     )
 
@@ -2108,9 +2164,10 @@ default_bar_spacing = 6  # 모든 타임프레임 동일 (균일 간격이므로
 # ── Lightweight Charts HTML ──
 lw_html = f"""
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <style>
   * {{ margin:0; padding:0; box-sizing:border-box; }}
@@ -2185,31 +2242,31 @@ lw_html = f"""
 </style>
 </head>
 <body>
-<div id="chart-wrapper">
-  <div id="info-overlay">
+<div id="chart-wrapper" role="figure" aria-label="{idx_name} {tf} 가격 차트 - 캔들스틱, 이동평균선, 유동성 오버레이 포함">
+  <div id="info-overlay" aria-live="polite" aria-atomic="true">
     <div id="info-title">
       <span class="idx-name">{idx_name}</span>
       <span class="idx-tf">{tf}</span>
       <span class="idx-date" id="v-date"></span>
     </div>
     <div id="info-ohlc">
-      <span><span class="label">시</span> <span class="val" id="v-open">-</span></span>
-      <span><span class="label">고</span> <span class="val" id="v-high">-</span></span>
-      <span><span class="label">저</span> <span class="val" id="v-low">-</span></span>
-      <span><span class="label">종</span> <span class="val" id="v-close">-</span></span>
-      <span id="v-chg-wrap"><span class="val" id="v-chg">-</span></span>
+      <span><abbr class="label" title="시가">시</abbr> <span class="val" id="v-open">-</span></span>
+      <span><abbr class="label" title="고가">고</abbr> <span class="val" id="v-high">-</span></span>
+      <span><abbr class="label" title="저가">저</abbr> <span class="val" id="v-low">-</span></span>
+      <span><abbr class="label" title="종가">종</abbr> <span class="val" id="v-close">-</span></span>
+      <span id="v-chg-wrap"><span class="val" id="v-chg" aria-label="전일 대비 변동률">-</span></span>
       <span><span class="label">거래량</span> <span class="val" id="v-vol">-</span></span>
       <span><span class="label">{liq_label}</span> <span class="val" id="v-liq" style="color:#3b82f6">-</span></span>
     </div>
-    <div id="ma-legend">
-      <span><span class="dot ma20-dot"></span><span id="v-ma20" style="color:#f59e0b">MA20 -</span></span>
-      <span><span class="dot ma60-dot"></span><span id="v-ma60" style="color:#3b82f6">MA60 -</span></span>
-      <span><span class="dot ma120-dot"></span><span id="v-ma120" style="color:#8b5cf6">MA120 -</span></span>
-      <span><span class="dot liq-dot"></span><span style="color:rgba(59,130,246,0.7);">{liq_label}</span></span>
+    <div id="ma-legend" aria-label="이동평균선 범례">
+      <span><span class="dot ma20-dot" aria-hidden="true"></span><span id="v-ma20" style="color:#f59e0b">MA20 -</span></span>
+      <span><span class="dot ma60-dot" aria-hidden="true"></span><span id="v-ma60" style="color:#3b82f6">MA60 -</span></span>
+      <span><span class="dot ma120-dot" aria-hidden="true"></span><span id="v-ma120" style="color:#8b5cf6">MA120 -</span></span>
+      <span><span class="dot liq-dot" aria-hidden="true"></span><span style="color:rgba(59,130,246,0.7);">{liq_label}</span></span>
     </div>
   </div>
-  <div id="vol-label">Volume</div>
-  <div id="chart-container"></div>
+  <div id="vol-label" aria-hidden="true">Volume</div>
+  <div id="chart-container" role="img" aria-label="{idx_name} {tf} 인터랙티브 차트" tabindex="0"></div>
 </div>
 
 <script>
@@ -2475,14 +2532,15 @@ if len(ohlc_chart) >= 2:
     chg = (last["Close"] - prev["Close"]) / prev["Close"] * 100
     chg_arrow = "▲" if chg >= 0 else "▼"
     chg_color = "green" if chg >= 0 else "red"
+    chg_direction = "상승" if chg >= 0 else "하락"
     st.markdown(
-        f'<div class="guide-box">'
-        f'🕯️ <strong>최근 {tf}:</strong> '
+        f'<div class="guide-box" role="status" aria-label="최근 {tf} 요약: 종가 {last["Close"]:,.0f}, {chg_direction} {abs(chg):.2f}%">'
+        f'<span aria-hidden="true">🕯️</span> <strong>최근 {tf}:</strong> '
         f'시 <strong>{last["Open"]:,.0f}</strong> · '
         f'고 <strong>{last["High"]:,.0f}</strong> · '
         f'저 <strong>{last["Low"]:,.0f}</strong> · '
         f'종 <strong>{last["Close"]:,.0f}</strong> '
-        f'<span style="color:var(--accent-{chg_color})">{chg_arrow} {chg:+.2f}%</span>'
+        f'<span style="color:var(--accent-{chg_color})">{chg_arrow} {chg:+.2f}%<span class="sr-only"> ({chg_direction})</span></span>'
         f'<br>'
         f'이평선: <span style="color:#f59e0b">MA20</span> · '
         f'<span style="color:#3b82f6">MA60</span> · '
@@ -2495,11 +2553,12 @@ if len(ohlc_chart) >= 2:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 이벤트 타임라인
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-st.markdown("""<div class="card">
-    <div class="card-title"><span class="dot" style="background:var(--accent-blue)"></span> 주요 매크로 이벤트 타임라인 ({} 이벤트)</div>
-""".format(sum(1 for d,_,_,_,_ in ALL_EVENTS if pd.to_datetime(d) >= dff.index.min())), unsafe_allow_html=True)
+event_count = sum(1 for d,_,_,_,_ in ALL_EVENTS if pd.to_datetime(d) >= dff.index.min())
+st.markdown(f"""<section aria-label="주요 매크로 이벤트 타임라인"><div class="card">
+    <h2 class="card-title"><span class="dot" style="background:var(--accent-blue)" aria-hidden="true"></span> 주요 매크로 이벤트 타임라인 ({event_count} 이벤트)</h2>
+""", unsafe_allow_html=True)
 
-tl_html = '<div class="timeline">'
+tl_html = '<div class="timeline" role="list" aria-label="이벤트 목록">'
 for date_str, title, desc, emoji, direction in reversed(ALL_EVENTS):
     dt = pd.to_datetime(date_str)
     if dt < dff.index.min():
@@ -2507,26 +2566,26 @@ for date_str, title, desc, emoji, direction in reversed(ALL_EVENTS):
     dir_cls = "up" if direction == "up" else "down"
     dir_label = "상승" if direction == "up" else "하락"
     tl_html += f"""
-    <div class="tl-item">
-        <div class="tl-date">{date_str}</div>
-        <div class="tl-icon">{emoji}</div>
+    <div class="tl-item" role="listitem" aria-label="{date_str}: {title} - {dir_label}">
+        <time class="tl-date" datetime="{date_str}">{date_str}</time>
+        <div class="tl-icon" aria-hidden="true">{emoji}</div>
         <div class="tl-content">
             <div class="tl-title">{title}</div>
             <div class="tl-desc">{desc}</div>
         </div>
-        <div class="tl-dir {dir_cls}">{dir_label}</div>
+        <div class="tl-dir {dir_cls}" aria-label="시장 방향: {dir_label}">{dir_label}</div>
     </div>"""
 tl_html += "</div>"
-st.markdown(tl_html + "</div>", unsafe_allow_html=True)
+st.markdown(tl_html + "</div></section>", unsafe_allow_html=True)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 푸터
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 st.markdown(
-    f'<div class="app-footer">'
-    f'데이터: {CC["data_src"]} · 업데이트: {df.index.max().strftime("%Y-%m-%d")}'
+    f'<footer role="contentinfo" class="app-footer">'
+    f'데이터: {CC["data_src"]} · 업데이트: <time datetime="{df.index.max().strftime("%Y-%m-%d")}">{df.index.max().strftime("%Y-%m-%d")}</time>'
     f'<br>실시간 갱신: 5분 간격 · 본 페이지는 투자 조언이 아닙니다'
-    f'</div>',
+    f'</footer>',
     unsafe_allow_html=True,
 )
