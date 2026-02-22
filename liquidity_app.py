@@ -7,7 +7,29 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import numpy as np
 import json
+import threading
+import urllib.request
 from zoneinfo import ZoneInfo
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Keep-alive: 백그라운드 self-ping으로 슬립 방지
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+_KEEP_ALIVE_INTERVAL = 300  # 5분마다 self-ping
+
+def _keep_alive_ping():
+    """백그라운드에서 주기적으로 앱 URL에 ping을 보내 슬립 방지"""
+    import time
+    while True:
+        time.sleep(_KEEP_ALIVE_INTERVAL)
+        try:
+            urllib.request.urlopen("https://myquant.streamlit.app/", timeout=30)
+        except Exception:
+            pass
+
+if "keep_alive_started" not in st.session_state:
+    st.session_state.keep_alive_started = True
+    t = threading.Thread(target=_keep_alive_ping, daemon=True)
+    t.start()
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 페이지 설정 (즐겨찾기 아이콘 적용)
@@ -41,7 +63,15 @@ NEXT_REFRESH_TIME, REFRESH_SECS = get_next_refresh()
 st.markdown(
     f'<meta http-equiv="refresh" content="{REFRESH_INTERVAL_SEC}">'
     f'<meta name="description" content="중앙은행 유동성과 주가지수의 상관관계를 실시간으로 분석하는 대시보드입니다.">'
-    f'<script>document.documentElement.setAttribute("lang", "ko");</script>',
+    f'<script>document.documentElement.setAttribute("lang", "ko");</script>'
+    '<script>'
+    '(function(){'
+    '  function keepAlive(){'
+    '    fetch(window.location.href,{method:"HEAD"}).catch(function(){});'
+    '  }'
+    '  setInterval(keepAlive, 120000);'  # 2분마다 fetch로 연결 유지
+    '})();'
+    '</script>',
     unsafe_allow_html=True,
 )
 

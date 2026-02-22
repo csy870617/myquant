@@ -2,6 +2,9 @@
 headless = true
 port = 8501
 enableCORS = false
+enableWebsocketCompression = false
+maxMessageSize = 200
+enableXsrfProtection = false
 
 [browser]
 gatherUsageStats = false
